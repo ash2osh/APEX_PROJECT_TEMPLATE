@@ -6,5 +6,5 @@ description: Hand-edit shared components in an apexlang project — authenticati
 # Edit Shared Component
 
 Read and follow the canonical project skill at
-[`../../../.agents/skills/edit-shared-component/SKILL.md`](../../../.agents/skills/edit-shared-component/SKILL.md).
+[`../../../.agents/skills/uc-apx/edit-shared-component/SKILL.md`](../../../.agents/skills/uc-apx/edit-shared-component/SKILL.md).
 Load its referenced files only when relevant to the task.

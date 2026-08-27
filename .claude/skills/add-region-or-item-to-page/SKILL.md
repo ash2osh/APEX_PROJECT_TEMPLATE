@@ -6,5 +6,5 @@ description: Add a region, page item, button, process, or branch to an existing 
 # Add Region Or Item To Page
 
 Read and follow the canonical project skill at
-[`../../../.agents/skills/add-region-or-item-to-page/SKILL.md`](../../../.agents/skills/add-region-or-item-to-page/SKILL.md).
+[`../../../.agents/skills/uc-apx/add-region-or-item-to-page/SKILL.md`](../../../.agents/skills/uc-apx/add-region-or-item-to-page/SKILL.md).
 Load its referenced files only when relevant to the task.

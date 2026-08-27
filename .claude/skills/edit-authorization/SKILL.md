@@ -6,5 +6,5 @@ description: Create, edit, and apply authorization schemes in an Oracle APEX ape
 # Edit Authorization
 
 Read and follow the canonical project skill at
-[`../../../.agents/skills/edit-authorization/SKILL.md`](../../../.agents/skills/edit-authorization/SKILL.md).
+[`../../../.agents/skills/uc-apx/edit-authorization/SKILL.md`](../../../.agents/skills/uc-apx/edit-authorization/SKILL.md).
 Load its referenced files only when relevant to the task.

@@ -6,5 +6,5 @@ description: Remove a region, page item, button, process, dynamic action, comput
 # Delete Component
 
 Read and follow the canonical project skill at
-[`../../../.agents/skills/delete-component/SKILL.md`](../../../.agents/skills/delete-component/SKILL.md).
+[`../../../.agents/skills/uc-apx/delete-component/SKILL.md`](../../../.agents/skills/uc-apx/delete-component/SKILL.md).
 Load its referenced files only when relevant to the task.

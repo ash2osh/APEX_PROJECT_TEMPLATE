@@ -6,5 +6,5 @@ description: Use `uc-apx shape <kind>` to discover what properties, blocks, chil
 # Inspect Construct Schema
 
 Read and follow the canonical project skill at
-[`../../../.agents/skills/inspect-construct-schema/SKILL.md`](../../../.agents/skills/inspect-construct-schema/SKILL.md).
+[`../../../.agents/skills/uc-apx/inspect-construct-schema/SKILL.md`](../../../.agents/skills/uc-apx/inspect-construct-schema/SKILL.md).
 Load its referenced files only when relevant to the task.

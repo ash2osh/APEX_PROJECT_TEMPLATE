@@ -6,5 +6,5 @@ description: Use when about to claim work is complete, fixed, or passing, before
 # Verification Before Completion
 
 Read and follow the canonical project skill at
-[`../../../.agents/skills/verification-before-completion/SKILL.md`](../../../.agents/skills/verification-before-completion/SKILL.md).
+[`../../../.agents/skills/superpowers/verification-before-completion/SKILL.md`](../../../.agents/skills/superpowers/verification-before-completion/SKILL.md).
 Load its referenced files only when relevant to the task.

@@ -6,5 +6,5 @@ description: Verify an apexlang application with `uc-apx validate` (and the offi
 # Validate After Edit
 
 Read and follow the canonical project skill at
-[`../../../.agents/skills/validate-after-edit/SKILL.md`](../../../.agents/skills/validate-after-edit/SKILL.md).
+[`../../../.agents/skills/uc-apx/validate-after-edit/SKILL.md`](../../../.agents/skills/uc-apx/validate-after-edit/SKILL.md).
 Load its referenced files only when relevant to the task.

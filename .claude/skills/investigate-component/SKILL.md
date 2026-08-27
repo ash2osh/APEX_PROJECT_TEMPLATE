@@ -6,5 +6,5 @@ description: Find the responsible apexlang construct given a symptom or keyword 
 # Investigate Component
 
 Read and follow the canonical project skill at
-[`../../../.agents/skills/investigate-component/SKILL.md`](../../../.agents/skills/investigate-component/SKILL.md).
+[`../../../.agents/skills/uc-apx/investigate-component/SKILL.md`](../../../.agents/skills/uc-apx/investigate-component/SKILL.md).
 Load its referenced files only when relevant to the task.

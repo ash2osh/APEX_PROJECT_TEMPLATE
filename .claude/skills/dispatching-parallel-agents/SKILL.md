@@ -6,5 +6,5 @@ description: Use when facing 2+ independent tasks that can be worked on without 
 # Dispatching Parallel Agents
 
 Read and follow the canonical project skill at
-[`../../../.agents/skills/dispatching-parallel-agents/SKILL.md`](../../../.agents/skills/dispatching-parallel-agents/SKILL.md).
+[`../../../.agents/skills/superpowers/dispatching-parallel-agents/SKILL.md`](../../../.agents/skills/superpowers/dispatching-parallel-agents/SKILL.md).
 Load its referenced files only when relevant to the task.

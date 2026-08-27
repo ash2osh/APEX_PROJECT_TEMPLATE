@@ -6,5 +6,5 @@ description: Orient yourself in an unfamiliar Oracle APEX apexlang project using
 # Navigate App
 
 Read and follow the canonical project skill at
-[`../../../.agents/skills/navigate-app/SKILL.md`](../../../.agents/skills/navigate-app/SKILL.md).
+[`../../../.agents/skills/uc-apx/navigate-app/SKILL.md`](../../../.agents/skills/uc-apx/navigate-app/SKILL.md).
 Load its referenced files only when relevant to the task.

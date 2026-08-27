@@ -6,5 +6,5 @@ description: Use when receiving code review feedback, before implementing sugges
 # Receiving Code Review
 
 Read and follow the canonical project skill at
-[`../../../.agents/skills/receiving-code-review/SKILL.md`](../../../.agents/skills/receiving-code-review/SKILL.md).
+[`../../../.agents/skills/superpowers/receiving-code-review/SKILL.md`](../../../.agents/skills/superpowers/receiving-code-review/SKILL.md).
 Load its referenced files only when relevant to the task.

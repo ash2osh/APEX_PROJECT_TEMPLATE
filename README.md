@@ -96,11 +96,13 @@ scripts/                        Export/backup automation (.sh + .ps1 pairs)
 .claude/                        Thin Claude-Code-specific pointers into .agents/
 ```
 
-`.agents/skills/` also carries a vendored, local copy of the
-[superpowers](https://github.com/obra/superpowers) workflow skill library
-(brainstorming, writing-plans, TDD, code review, etc. — see `agents.md` §9)
-so those skills are available on any machine or agent client, whether or
-not the superpowers plugin itself is installed.
+`.agents/skills/` groups every skill by source — `uc-apx/`, `sqlcl-mcp-r0/`,
+`superpowers/` — with one file, [`.agents/skills/SKILLS.md`](.agents/skills/SKILLS.md),
+indexing all of them by name and when to use each. `superpowers/` is a
+vendored, local copy of the [superpowers](https://github.com/obra/superpowers)
+workflow skill library (brainstorming, writing-plans, TDD, code review, etc.
+— see `agents.md` §9) so those skills are available on any machine or agent
+client, whether or not the superpowers plugin itself is installed.
 
 See `agents.md` for the full set of repository conventions, and `AGENTS.md`
 for the read order any coding agent should follow at the start of a task.

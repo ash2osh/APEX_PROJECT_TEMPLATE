@@ -6,5 +6,5 @@ description: Get a whole-app view of authorization in an Oracle APEX apexlang pr
 # Audit Authorization
 
 Read and follow the canonical project skill at
-[`../../../.agents/skills/audit-authorization/SKILL.md`](../../../.agents/skills/audit-authorization/SKILL.md).
+[`../../../.agents/skills/uc-apx/audit-authorization/SKILL.md`](../../../.agents/skills/uc-apx/audit-authorization/SKILL.md).
 Load its referenced files only when relevant to the task.

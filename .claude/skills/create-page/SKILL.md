@@ -6,5 +6,5 @@ description: Scaffold new Oracle APEX apexlang pages in a project using the `uc-
 # Create Page
 
 Read and follow the canonical project skill at
-[`../../../.agents/skills/create-page/SKILL.md`](../../../.agents/skills/create-page/SKILL.md).
+[`../../../.agents/skills/uc-apx/create-page/SKILL.md`](../../../.agents/skills/uc-apx/create-page/SKILL.md).
 Load its referenced files only when relevant to the task.

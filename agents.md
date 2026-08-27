@@ -117,8 +117,10 @@ it is present — check first, and fall back to plain SQLcl export/import
 plus the `apex` skill when it is not.
 
 This repo also carries `uc-apx`'s own task-routed skills under
-[`.agents/skills/`](.agents/skills/) (canonical) with thin pointers under
-[`.claude/skills/`](.claude/skills/) — `getting-started`, `navigate-app`,
+[`.agents/skills/uc-apx/`](.agents/skills/uc-apx/) (canonical) with thin
+pointers under [`.claude/skills/`](.claude/skills/) — see
+[`.agents/skills/SKILLS.md`](.agents/skills/SKILLS.md) for the full list
+with descriptions, or just: `getting-started`, `navigate-app`,
 `investigate-component`, `inspect-construct-schema`, `create-page`,
 `add-region-or-item-to-page`, `edit-shared-component`, `delete-component`,
 `edit-authorization`, `audit-authorization`, `analyze-db-dependencies`, and
@@ -148,15 +150,18 @@ accidental sequence execution.
 
 This repo carries a local copy of the [superpowers](https://github.com/obra/superpowers)
 skill library (MIT License, © Jesse Vincent — see
-[`.agents/skills/SUPERPOWERS_LICENSE`](.agents/skills/SUPERPOWERS_LICENSE))
-under `.agents/skills/` (canonical) with thin pointers under
-`.claude/skills/`, following the same pattern as every other skill in this
-repo: `brainstorming`, `writing-plans`, `executing-plans`,
-`subagent-driven-development`, `dispatching-parallel-agents`,
-`systematic-debugging`, `test-driven-development`, `using-git-worktrees`,
-`requesting-code-review`, `receiving-code-review`,
-`finishing-a-development-branch`, `verification-before-completion`,
-`writing-skills`, and `using-superpowers` (the entry point — start there).
+[`.agents/skills/superpowers/LICENSE`](.agents/skills/superpowers/LICENSE))
+under [`.agents/skills/superpowers/`](.agents/skills/superpowers/)
+(canonical) with thin pointers under `.claude/skills/`, following the same
+pattern as every other skill in this repo — see
+[`.agents/skills/SKILLS.md`](.agents/skills/SKILLS.md) for the full list
+with descriptions, or just: `brainstorming`, `writing-plans`,
+`executing-plans`, `subagent-driven-development`,
+`dispatching-parallel-agents`, `systematic-debugging`,
+`test-driven-development`, `using-git-worktrees`, `requesting-code-review`,
+`receiving-code-review`, `finishing-a-development-branch`,
+`verification-before-completion`, `writing-skills`, and `using-superpowers`
+(the entry point — start there).
 
 Unlike `uc-apx` or `graphify`, these are pure-content process skills with no
 external binary dependency — they work on any machine, for any coding

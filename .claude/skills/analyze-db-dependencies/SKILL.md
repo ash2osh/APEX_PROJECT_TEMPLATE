@@ -6,5 +6,5 @@ description: Use `uc-apx schema` to find which database objects (tables, views, 
 # Analyze Db Dependencies
 
 Read and follow the canonical project skill at
-[`../../../.agents/skills/analyze-db-dependencies/SKILL.md`](../../../.agents/skills/analyze-db-dependencies/SKILL.md).
+[`../../../.agents/skills/uc-apx/analyze-db-dependencies/SKILL.md`](../../../.agents/skills/uc-apx/analyze-db-dependencies/SKILL.md).
 Load its referenced files only when relevant to the task.

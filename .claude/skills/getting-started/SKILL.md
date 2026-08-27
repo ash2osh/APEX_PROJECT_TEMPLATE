@@ -6,5 +6,5 @@ description: Entry point for reading or editing an Oracle APEX apexlang applicat
 # Getting Started
 
 Read and follow the canonical project skill at
-[`../../../.agents/skills/getting-started/SKILL.md`](../../../.agents/skills/getting-started/SKILL.md).
+[`../../../.agents/skills/uc-apx/getting-started/SKILL.md`](../../../.agents/skills/uc-apx/getting-started/SKILL.md).
 Load its referenced files only when relevant to the task.

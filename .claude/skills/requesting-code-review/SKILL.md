@@ -6,5 +6,5 @@ description: Use when completing tasks, implementing major features, or before m
 # Requesting Code Review
 
 Read and follow the canonical project skill at
-[`../../../.agents/skills/requesting-code-review/SKILL.md`](../../../.agents/skills/requesting-code-review/SKILL.md).
+[`../../../.agents/skills/superpowers/requesting-code-review/SKILL.md`](../../../.agents/skills/superpowers/requesting-code-review/SKILL.md).
 Load its referenced files only when relevant to the task.

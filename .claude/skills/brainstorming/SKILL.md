@@ -6,5 +6,5 @@ description: "You MUST use this before any creative work - creating features, bu
 # Brainstorming
 
 Read and follow the canonical project skill at
-[`../../../.agents/skills/brainstorming/SKILL.md`](../../../.agents/skills/brainstorming/SKILL.md).
+[`../../../.agents/skills/superpowers/brainstorming/SKILL.md`](../../../.agents/skills/superpowers/brainstorming/SKILL.md).
 Load its referenced files only when relevant to the task.

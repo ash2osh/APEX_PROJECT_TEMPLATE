@@ -6,5 +6,5 @@ description: Use when starting feature work that needs isolation from current wo
 # Using Git Worktrees
 
 Read and follow the canonical project skill at
-[`../../../.agents/skills/using-git-worktrees/SKILL.md`](../../../.agents/skills/using-git-worktrees/SKILL.md).
+[`../../../.agents/skills/superpowers/using-git-worktrees/SKILL.md`](../../../.agents/skills/superpowers/using-git-worktrees/SKILL.md).
 Load its referenced files only when relevant to the task.
