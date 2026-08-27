@@ -9,6 +9,13 @@ then work through "Instantiating this template" below.
 
 ## Prerequisites
 
+- `perl` — used by `scripts/normalize_apx.sh` to normalize `.apx` line
+  endings. Bundled by default on macOS and most desktop Linux distros; on
+  minimal Linux images (e.g. slim Docker bases) install it explicitly. The
+  `scripts/*.sh` pair requires a Unix shell (macOS/Linux natively, or WSL /
+  Git Bash on Windows) — Windows users without one of those should use the
+  `scripts/*.ps1` equivalents instead, which have no `perl` dependency.
+
 Run once per machine (idempotent — safe to re-run anytime to refresh):
 
 ```bash
@@ -73,6 +80,13 @@ never installed.
    equivalents) once you have a real app/schema to export, to populate
    `apps/` and `database/`.
 
+The export scripts write to `scratch/` first. After SQLcl succeeds, they
+replace the corresponding generated mirror, so files removed from the live
+application or schema do not remain stale in Git. A dirty mirror is refused
+instead of being overwritten. Export does not run APEX validation; run
+`uc-apx validate --app-dir <app>` separately when validating application
+changes.
+
 ## Placeholder tokens
 
 | Token | Appears in | Meaning | Example |
@@ -80,7 +94,7 @@ never installed.
 | `{{PROJECT_NAME}}` | `README.md`, `agents.md` | Short project name | `acme` |
 | `{{SCHEMA}}` | `agents.md`, `.agents/workflows/uc-apx.md`, `scripts/*` | Primary application/data schema | `ACME` |
 | `{{APP_ID}}` | `agents.md`, `scripts/*` | Primary APEX application ID | `100` |
-| `{{APP_SLUG}}` | `agents.md`, `.agents/workflows/uc-apx.md` | Primary APEX application folder slug | `example-app` |
+| `{{APP_SLUG}}` | `agents.md`, `.agents/workflows/uc-apx.md`, `scripts/*` | Primary APEX application folder slug | `example-app` |
 | `{{CONN_PREFIX}}` | `agents.md`, `scripts/*` | SQLcl saved-connection prefix | `dev1` |
 | `{{CONN_NAME}}` | `scripts/export_apps.sql`, `scripts/backup_db.sql` | Full saved-connection name (`{{CONN_PREFIX}}_{{SCHEMA}}`) | `dev1_ACME` |
 

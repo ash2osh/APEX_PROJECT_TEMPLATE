@@ -95,7 +95,7 @@ After **every** successful delete (whether forced or not), run:
 uc-apx --app-dir <root> validate --official
 ```
 
-Treat `official.success == true` as the success criterion. The local `validate` (without `--official`) is structural-only and misses most things the SQLcl validator catches. See [skills/verify/validate-after-edit/SKILL.md](../../verify/validate-after-edit/SKILL.md) for the canonical gate.
+Treat `official.success == true` as the success criterion. The local `validate` (without `--official`) is structural-only and misses most things the SQLcl validator catches. See [skills/verify/validate-after-edit/SKILL.md](../validate-after-edit/SKILL.md) for the canonical gate.
 
 If SQLcl is not on `$PATH`, fall back to `uc-apx validate` (no `--official`), but flag this to the user — local-only is lossy and the work isn't truly verified.
 
@@ -139,6 +139,6 @@ uc-apx --app-dir app validate --official         # mandatory follow-up
 
 ## Reference
 
-- Source: [cmd/delete.go](../../../cmd/delete.go), [cmd/delete_helpers.go](../../../cmd/delete_helpers.go), and the per-kind files (`delete_page_children.go`, `delete_column.go`, `delete_page.go`, `delete_shared_components.go`).
-- Tests: [delete_e2e_test.go](../../../delete_e2e_test.go) — happy paths, ref-blocked, --force, --dry-run, official-validate gate.
+- Source: [cmd/delete.go](https://github.com/United-Codes/uc-apx/blob/main/cmd/delete.go), [cmd/delete_helpers.go](https://github.com/United-Codes/uc-apx/blob/main/cmd/delete_helpers.go), and the per-kind files (`delete_page_children.go`, `delete_column.go`, `delete_page.go`, `delete_shared_components.go`).
+- Tests: [delete_e2e_test.go](https://github.com/United-Codes/uc-apx/blob/main/delete_e2e_test.go) — happy paths, ref-blocked, --force, --dry-run, official-validate gate.
 - Cross-link: [skills/edit/add-region-or-item-to-page/SKILL.md](../add-region-or-item-to-page/SKILL.md) covers the inverse (create).

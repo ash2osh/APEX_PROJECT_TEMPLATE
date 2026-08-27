@@ -11,6 +11,14 @@ SET TRIMSPOOL ON
 SET FEEDBACK OFF
 SET ECHO OFF
 SET VERIFY OFF
+WHENEVER SQLERROR EXIT SQL.SQLCODE
+WHENEVER OSERROR EXIT FAILURE
+
+SELECT 'SQLcl target: session_user=' || SYS_CONTEXT('USERENV', 'SESSION_USER')
+       || ', current_schema=' || SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA')
+       || ', db_name=' || SYS_CONTEXT('USERENV', 'DB_NAME')
+       || ', service=' || SYS_CONTEXT('USERENV', 'SERVICE_NAME')
+FROM DUAL;
 
 BEGIN
   DBMS_METADATA.SET_TRANSFORM_PARAM(DBMS_METADATA.SESSION_TRANSFORM, 'PRETTY', TRUE);
@@ -23,11 +31,13 @@ END;
 -- Guard: fail loudly if connected to the wrong schema, instead of silently
 -- exporting into the wrong directory.
 DECLARE
+  v_session_user VARCHAR2(128) := SYS_CONTEXT('USERENV', 'SESSION_USER');
   v_schema VARCHAR2(128) := SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA');
 BEGIN
-  IF v_schema != '{{SCHEMA}}' THEN
+  IF v_session_user != '{{SCHEMA}}' OR v_schema != '{{SCHEMA}}' THEN
     RAISE_APPLICATION_ERROR(-20001,
-      'backup_db.sql expected schema {{SCHEMA}} but current schema is ' || v_schema);
+      'backup_db.sql expected session/current schema {{SCHEMA}} but found '
+      || v_session_user || '/' || v_schema);
   END IF;
 END;
 /

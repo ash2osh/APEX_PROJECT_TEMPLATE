@@ -104,6 +104,6 @@ Resist the urge to fix multiple errors in one pass without re-running — a sing
 
 ## Reference
 
-- Validator source: [cmd/validate.go](../../../cmd/validate.go)
-- Output types: [output/json.go](../../../output/json.go) — `ValidationResult`, `ValidationIssue`, `OfficialValidation`
-- CLI overview: [CLAUDE.md](../../../CLAUDE.md)
+- Validator source: [cmd/validate.go](https://github.com/United-Codes/uc-apx/blob/main/cmd/validate.go)
+- Output types: [output/json.go](https://github.com/United-Codes/uc-apx/blob/main/output/json.go) — `ValidationResult`, `ValidationIssue`, `OfficialValidation`
+- CLI overview: [CLAUDE.md](https://github.com/United-Codes/uc-apx/blob/main/CLAUDE.md)

@@ -1,3 +1,9 @@
 # Enforce Unix line endings (LF) for APEXlang and SQL files
 *.apx text eol=lf
 *.sql text eol=lf
+
+# Enforce LF on scripts so a CRLF checkout (e.g. Windows core.autocrlf=true)
+# never breaks a bash shebang for Linux/macOS collaborators. PowerShell reads
+# either line ending fine, so pinning .ps1 to LF too is just for consistency.
+*.sh text eol=lf
+*.ps1 text eol=lf

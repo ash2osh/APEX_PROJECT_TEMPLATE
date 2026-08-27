@@ -110,6 +110,6 @@ uc-apx schema --app-dir <root> | jq '.objects[] | select(.refCount > 10) | {name
 
 ## Reference
 
-- Command: [cmd/schema.go](../../../cmd/schema.go)
-- Extraction core: [dbdeps/extract.go](../../../dbdeps/extract.go), [dbdeps/ddl.go](../../../dbdeps/ddl.go)
+- Command: [cmd/schema.go](https://github.com/United-Codes/uc-apx/blob/main/cmd/schema.go)
+- Extraction core: [dbdeps/extract.go](https://github.com/United-Codes/uc-apx/blob/main/dbdeps/extract.go), [dbdeps/ddl.go](https://github.com/United-Codes/uc-apx/blob/main/dbdeps/ddl.go)
 - Construct-shape counterpart: [inspect-construct-schema](../inspect-construct-schema/SKILL.md)

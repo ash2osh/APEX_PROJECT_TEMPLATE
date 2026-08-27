@@ -188,9 +188,9 @@ On success the command prints a result like:
 
 ## Reference
 
-- Command source: [cmd/create_page.go](../../../cmd/create_page.go)
-- Bundled templates: [assets/page-templates/](../../../assets/page-templates/)
-- Validation workflow: [skills/verify/validate-after-edit/SKILL.md](../../verify/validate-after-edit/SKILL.md)
+- Command source: [cmd/create_page.go](https://github.com/United-Codes/uc-apx/blob/main/cmd/create_page.go)
+- Bundled templates: [assets/page-templates/](https://github.com/United-Codes/uc-apx/tree/main/assets/page-templates)
+- Validation workflow: [skills/verify/validate-after-edit/SKILL.md](../validate-after-edit/SKILL.md)
 
 ## Validate before you declare done
 
@@ -206,4 +206,4 @@ If `sql` (SQLcl 26.1.2+) is on `$PATH`, prefer the full check:
 uc-apx validate --app-dir <project-root> --official
 ```
 
-**Do not declare the change done until validate exits clean.** If validate errors, read the file and line it reports, fix the issue, and re-run. See [skills/verify/validate-after-edit/SKILL.md](../../verify/validate-after-edit/SKILL.md) for how to interpret each issue kind.
+**Do not declare the change done until validate exits clean.** If validate errors, read the file and line it reports, fix the issue, and re-run. See [skills/verify/validate-after-edit/SKILL.md](../validate-after-edit/SKILL.md) for how to interpret each issue kind.

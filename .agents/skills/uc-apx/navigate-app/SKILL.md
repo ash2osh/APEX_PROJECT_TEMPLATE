@@ -132,6 +132,6 @@ By the time you've run those four commands, you know: how big the app is, how ma
 
 ## Reference
 
-- Commands: [cmd/](../../../cmd/)
-- Index source: [index/index.go](../../../index/index.go)
-- Output shapes: [output/json.go](../../../output/json.go)
+- Commands: [cmd/](https://github.com/United-Codes/uc-apx/tree/main/cmd)
+- Index source: [index/index.go](https://github.com/United-Codes/uc-apx/blob/main/index/index.go)
+- Output shapes: [output/json.go](https://github.com/United-Codes/uc-apx/blob/main/output/json.go)

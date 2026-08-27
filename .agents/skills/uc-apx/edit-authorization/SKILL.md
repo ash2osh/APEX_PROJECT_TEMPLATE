@@ -7,7 +7,7 @@ description: Create, edit, and apply authorization schemes in an Oracle APEX ape
 
 Authorization in APEX has two halves: the **scheme** (defined once in `shared-components/authorizations.apx`) and the **references** to it (`security { authorizationScheme: @scheme }` on pages, regions, buttons, processes, etc.). This skill covers both — defining/changing schemes and applying them.
 
-To *see* what already exists before changing it, use [skills/read/audit-authorization/SKILL.md](../../read/audit-authorization/SKILL.md).
+To *see* what already exists before changing it, use [skills/read/audit-authorization/SKILL.md](../audit-authorization/SKILL.md).
 
 ## When to use this skill
 
@@ -82,9 +82,9 @@ To gate a construct for everyone *except* a scheme's members, the value is `!@sc
 
 ## Reference
 
-- Command sources: [cmd/create_authorization.go](../../../cmd/create_authorization.go), [cmd/edit_authorization.go](../../../cmd/edit_authorization.go), [cmd/edit_page.go](../../../cmd/edit_page.go), [cmd/edit_authz_shared.go](../../../cmd/edit_authz_shared.go)
-- Auditing authorization: [skills/read/audit-authorization/SKILL.md](../../read/audit-authorization/SKILL.md)
-- Validation workflow: [skills/verify/validate-after-edit/SKILL.md](../../verify/validate-after-edit/SKILL.md)
+- Command sources: [cmd/create_authorization.go](https://github.com/United-Codes/uc-apx/blob/main/cmd/create_authorization.go), [cmd/edit_authorization.go](https://github.com/United-Codes/uc-apx/blob/main/cmd/edit_authorization.go), [cmd/edit_page.go](https://github.com/United-Codes/uc-apx/blob/main/cmd/edit_page.go), [cmd/edit_authz_shared.go](https://github.com/United-Codes/uc-apx/blob/main/cmd/edit_authz_shared.go)
+- Auditing authorization: [skills/read/audit-authorization/SKILL.md](../audit-authorization/SKILL.md)
+- Validation workflow: [skills/verify/validate-after-edit/SKILL.md](../validate-after-edit/SKILL.md)
 
 ## Validate before you declare done
 
@@ -100,4 +100,4 @@ If `sql` (SQLcl 26.1.2+) is on `$PATH`, prefer the full check:
 uc-apx validate --app-dir <project-root> --official
 ```
 
-**Do not declare the change done until validate exits clean.** If validate errors, read the file and line it reports, fix the issue, and re-run. See [skills/verify/validate-after-edit/SKILL.md](../../verify/validate-after-edit/SKILL.md) for how to interpret each issue kind.
+**Do not declare the change done until validate exits clean.** If validate errors, read the file and line it reports, fix the issue, and re-run. See [skills/verify/validate-after-edit/SKILL.md](../validate-after-edit/SKILL.md) for how to interpret each issue kind.

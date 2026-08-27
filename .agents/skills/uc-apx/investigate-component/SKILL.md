@@ -86,7 +86,7 @@ By step 2 you have the file + line + SQL text and can decide whether the bug is 
 
 ## Reference
 
-- Search source: [cmd/search.go](../../../cmd/search.go)
-- Refs source: [cmd/refs.go](../../../cmd/refs.go)
-- Deps source: [cmd/deps.go](../../../cmd/deps.go)
-- Index cross-references: [index/index.go](../../../index/index.go)
+- Search source: [cmd/search.go](https://github.com/United-Codes/uc-apx/blob/main/cmd/search.go)
+- Refs source: [cmd/refs.go](https://github.com/United-Codes/uc-apx/blob/main/cmd/refs.go)
+- Deps source: [cmd/deps.go](https://github.com/United-Codes/uc-apx/blob/main/cmd/deps.go)
+- Index cross-references: [index/index.go](https://github.com/United-Codes/uc-apx/blob/main/index/index.go)

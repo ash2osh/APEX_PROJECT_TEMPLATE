@@ -135,7 +135,7 @@ The triple-backtick fence + language tag is required for syntax-aware editors.
 
 ### Step 4: validate
 
-This step is **not optional**. See [skills/verify/validate-after-edit/SKILL.md](../../verify/validate-after-edit/SKILL.md) for the full workflow.
+This step is **not optional**. See [skills/verify/validate-after-edit/SKILL.md](../validate-after-edit/SKILL.md) for the full workflow.
 
 ## Concrete examples
 
@@ -203,10 +203,10 @@ If `sql` (SQLcl 26.1.2+) is on `$PATH`, prefer the full check:
 uc-apx validate --app-dir <project-root> --official
 ```
 
-**Do not declare the change done until validate exits clean.** If validate errors, read the file and line it reports, fix the issue, and re-run. See [skills/verify/validate-after-edit/SKILL.md](../../verify/validate-after-edit/SKILL.md) for how to interpret each issue kind.
+**Do not declare the change done until validate exits clean.** If validate errors, read the file and line it reports, fix the issue, and re-run. See [skills/verify/validate-after-edit/SKILL.md](../validate-after-edit/SKILL.md) for how to interpret each issue kind.
 
 ## Reference
 
-- Index source: [index/index.go](../../../index/index.go)
-- Validate skill: [skills/verify/validate-after-edit/SKILL.md](../../verify/validate-after-edit/SKILL.md)
-- Schema inspection: [skills/read/inspect-construct-schema/SKILL.md](../../read/inspect-construct-schema/SKILL.md)
+- Index source: [index/index.go](https://github.com/United-Codes/uc-apx/blob/main/index/index.go)
+- Validate skill: [skills/verify/validate-after-edit/SKILL.md](../validate-after-edit/SKILL.md)
+- Schema inspection: [skills/read/inspect-construct-schema/SKILL.md](../inspect-construct-schema/SKILL.md)

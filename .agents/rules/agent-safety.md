@@ -39,6 +39,9 @@ Apply these gates in every repository workflow, regardless of client or model.
 
 - Resolve exact paths; do not use broad recursive deletion or repository-wide
   overwrites.
+- Put temporary files, generated helper scripts, staging exports, and rollback
+  copies only under the repository's `scratch/` directory, and clean them up
+  when the operation finishes.
 - Review generated files and focused diffs before staging them.
 - Do not print credentials, wallets, private keys, passwords, tokens, or full
   credential-bearing URLs; do not dump unrestricted environment variables.

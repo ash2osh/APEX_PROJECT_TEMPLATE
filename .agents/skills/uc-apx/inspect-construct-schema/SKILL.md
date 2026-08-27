@@ -119,5 +119,5 @@ Returns block-properties present on every region (always-set conventions). Use `
 
 ## Reference
 
-- Schema source: [cmd/shape.go](../../../cmd/shape.go)
-- Validation: [skills/verify/validate-after-edit/SKILL.md](../../verify/validate-after-edit/SKILL.md)
+- Schema source: [cmd/shape.go](https://github.com/United-Codes/uc-apx/blob/main/cmd/shape.go)
+- Validation: [skills/verify/validate-after-edit/SKILL.md](../validate-after-edit/SKILL.md)

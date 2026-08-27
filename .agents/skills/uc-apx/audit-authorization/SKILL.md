@@ -14,7 +14,7 @@ Authorization in APEX is scattered: schemes live in `shared-components/authoriza
 - The user wants a security pass: unused schemes, pages with no authorization.
 - You're about to edit or delete an authorization scheme and need its usage first.
 
-**Do not** use this skill to *change* authorization — that's [skills/edit/edit-authorization/SKILL.md](../../edit/edit-authorization/SKILL.md). Use this to *understand* it first.
+**Do not** use this skill to *change* authorization — that's [skills/edit/edit-authorization/SKILL.md](../edit-authorization/SKILL.md). Use this to *understand* it first.
 
 ## The 3-command toolbox
 
@@ -73,7 +73,7 @@ uc-apx --app-dir . auth audit
 | One scheme's usages | `auth schemes --scheme <id>` (or `auth usage --scheme <id>`) |
 | Flat list of all auth references | `auth usage` |
 | Unused schemes + unprotected pages | `auth audit` |
-| Consistency warnings (nav-link vs page, button-gate vs process) | `uc-apx validate` — see [skills/verify/validate-after-edit/SKILL.md](../../verify/validate-after-edit/SKILL.md) |
+| Consistency warnings (nav-link vs page, button-gate vs process) | `uc-apx validate` — see [skills/verify/validate-after-edit/SKILL.md](../validate-after-edit/SKILL.md) |
 
 ## Common pitfalls
 
@@ -83,7 +83,7 @@ uc-apx --app-dir . auth audit
 
 ## Reference
 
-- Command source: [cmd/auth.go](../../../cmd/auth.go)
-- Scanning logic (negation-aware): [cmd/authz_scan.go](../../../cmd/authz_scan.go)
-- Consistency checks: [cmd/validate_authz.go](../../../cmd/validate_authz.go)
-- Changing authorization: [skills/edit/edit-authorization/SKILL.md](../../edit/edit-authorization/SKILL.md)
+- Command source: [cmd/auth.go](https://github.com/United-Codes/uc-apx/blob/main/cmd/auth.go)
+- Scanning logic (negation-aware): [cmd/authz_scan.go](https://github.com/United-Codes/uc-apx/blob/main/cmd/authz_scan.go)
+- Consistency checks: [cmd/validate_authz.go](https://github.com/United-Codes/uc-apx/blob/main/cmd/validate_authz.go)
+- Changing authorization: [skills/edit/edit-authorization/SKILL.md](../edit-authorization/SKILL.md)

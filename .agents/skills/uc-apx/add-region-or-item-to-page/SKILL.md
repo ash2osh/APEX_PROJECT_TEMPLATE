@@ -444,7 +444,7 @@ uc-apx shape button --app-dir <root>
 uc-apx shape process --app-dir <root>
 ```
 
-Each report shows the properties and blocks instances of that kind use in this app. Properties with `count == instanceCount` are conventional and you probably want them too. See [skills/read/inspect-construct-schema/SKILL.md](../../read/inspect-construct-schema/SKILL.md).
+Each report shows the properties and blocks instances of that kind use in this app. Properties with `count == instanceCount` are conventional and you probably want them too. See [skills/read/inspect-construct-schema/SKILL.md](../inspect-construct-schema/SKILL.md).
 
 ### Step 3: find a similar instance
 
@@ -585,7 +585,7 @@ process APEX$<unique-digits> (
 
 ### Step 5: validate
 
-This step is **not optional**. See [skills/verify/validate-after-edit/SKILL.md](../../verify/validate-after-edit/SKILL.md).
+This step is **not optional**. See [skills/verify/validate-after-edit/SKILL.md](../validate-after-edit/SKILL.md).
 
 ## Quick check: did I parse?
 
@@ -619,10 +619,10 @@ If `sql` (SQLcl 26.1.2+) is on `$PATH`, prefer the full check:
 uc-apx validate --app-dir <project-root> --official
 ```
 
-**Do not declare the change done until validate exits clean.** If validate errors, read the file and line it reports, fix the issue, and re-run. See [skills/verify/validate-after-edit/SKILL.md](../../verify/validate-after-edit/SKILL.md) for how to interpret each issue kind.
+**Do not declare the change done until validate exits clean.** If validate errors, read the file and line it reports, fix the issue, and re-run. See [skills/verify/validate-after-edit/SKILL.md](../validate-after-edit/SKILL.md) for how to interpret each issue kind.
 
 ## Reference
 
-- Parser: [parser/parser.go](../../../parser/parser.go)
-- Schema inspection: [skills/read/inspect-construct-schema/SKILL.md](../../read/inspect-construct-schema/SKILL.md)
-- Validate workflow: [skills/verify/validate-after-edit/SKILL.md](../../verify/validate-after-edit/SKILL.md)
+- Parser: [parser/parser.go](https://github.com/United-Codes/uc-apx/blob/main/parser/parser.go)
+- Schema inspection: [skills/read/inspect-construct-schema/SKILL.md](../inspect-construct-schema/SKILL.md)
+- Validate workflow: [skills/verify/validate-after-edit/SKILL.md](../validate-after-edit/SKILL.md)

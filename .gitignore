@@ -7,3 +7,7 @@ scratch/
 
 # Graphify knowledge-graph output (if the graphify tool is used)
 /graphify-out/
+
+# Python bytecode cache
+__pycache__/
+*.pyc

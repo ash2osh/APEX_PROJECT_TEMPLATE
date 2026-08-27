@@ -21,3 +21,12 @@ run `graphify update <path>` after modifying code. Otherwise run
 `graphify extract <path> --force --code-only`.
 After changing `.graphifyignore`, rebuild with `graphify update <path> --force`
 and verify excluded paths are absent while retained source remains queryable.
+
+`setup_graphify_apx.py` works by patching `.apx` support directly into the
+installed `graphify` package's `detect.py`/`extract.py` files, not through a
+supported extension point. Re-run it after every `graphify` upgrade — a new
+version can change those files' internals enough that the patch strings no
+longer match, silently dropping `.apx` support until the script is updated
+for the new version. The script now warns (rather than falsely reporting
+success) when a patch string isn't found; treat that warning as a signal
+that the patching logic needs updating for the installed `graphify` version.

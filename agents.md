@@ -54,8 +54,9 @@ placeholder list):
 - `ai_generate/YYYY-MM-DD/` — the only place new or modified SQL/PLSQL/APEX
   output is written. Tracked in git (not gitignored) — it is the durable
   record of AI-generated changes, not scratch space.
-- `scratch/` — local, gitignored throwaway space. Never put anything here
-  that needs to survive the session.
+- `scratch/` — local, gitignored throwaway space. All temporary files,
+  generated helper scripts, staging exports, and rollback copies go here;
+  never put anything here that needs to survive the session.
 - `scripts/` — export/backup automation (`.sh` and `.ps1` pairs for
   cross-platform use).
 
@@ -72,6 +73,12 @@ procedures/functions/components — not the whole file — unless the object is
 brand new. Deploy the change via SQLcl against the real target, then re-run
 the relevant export script in `scripts/` to bring `apps/`/`database/` back
 into sync with what was actually deployed.
+
+The export and database-mirror scripts stage their complete output under
+`scratch/`, normalize only staged files, and replace the exact generated
+mirror only after SQLcl exits successfully. They refuse to replace a dirty
+mirror and do not run `uc-apx validate`; validation remains an explicit
+developer or CI action for application changes.
 
 ## 4. SQLcl Deployment Conventions
 
