@@ -1,0 +1,15 @@
+scratch/
+
+# Generated backup-driver helper; keep the canonical .sql sources it's spooled from.
+scripts/_backup_db_driver.sql
+
+**/export.log
+**/export_err.log
+
+# Generated or embedded static assets.
+*.css
+*.js
+*.mjs
+**/fontawesome*/**
+**/webfonts/**
+**/static-files/**
