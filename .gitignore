@@ -1,6 +1,9 @@
 # Local, gitignored throwaway space
 scratch/
 
+# Per-clone project configuration. Credentials stay in SQLcl's saved store.
+.env
+
 # Export log files
 **/export.log
 **/export_err.log
@@ -11,3 +14,30 @@ scratch/
 # Python bytecode cache
 __pycache__/
 *.pyc
+
+# Optional uc-apx skills installed only after local opt-in.
+/.agents/skills/uc-apx/
+/.agents/skills/add-region-or-item-to-page/
+/.agents/skills/analyze-db-dependencies/
+/.agents/skills/audit-authorization/
+/.agents/skills/create-page/
+/.agents/skills/delete-component/
+/.agents/skills/edit-authorization/
+/.agents/skills/edit-shared-component/
+/.agents/skills/getting-started/
+/.agents/skills/inspect-construct-schema/
+/.agents/skills/investigate-component/
+/.agents/skills/navigate-app/
+/.agents/skills/validate-after-edit/
+/.claude/skills/add-region-or-item-to-page/
+/.claude/skills/analyze-db-dependencies/
+/.claude/skills/audit-authorization/
+/.claude/skills/create-page/
+/.claude/skills/delete-component/
+/.claude/skills/edit-authorization/
+/.claude/skills/edit-shared-component/
+/.claude/skills/getting-started/
+/.claude/skills/inspect-construct-schema/
+/.claude/skills/investigate-component/
+/.claude/skills/navigate-app/
+/.claude/skills/validate-after-edit/

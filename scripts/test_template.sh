@@ -28,6 +28,20 @@ MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
 test -f "$TEST_REPO/database/mirror/new.txt" || fail "new mirror content was not installed"
 test ! -e "$TEST_REPO/database/mirror/stale.txt" || fail "stale mirror content was retained"
 
+mkdir -p "$TEST_REPO/apps/schema/app" "$TEST_REPO/scratch/dotdot-staged"
+printf 'tracked\n' > "$TEST_REPO/apps/schema/app/tracked.txt"
+git -C "$TEST_REPO" add apps/schema/app/tracked.txt
+git -C "$TEST_REPO" -c user.name=TemplateTest -c user.email=test@example.invalid commit -qm "seed app mirror"
+printf 'replacement\n' > "$TEST_REPO/scratch/dotdot-staged/new.txt"
+set +e
+timeout 3s env MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
+  "$TEST_REPO/scratch/dotdot-staged" "apps/schema/.."
+dotdot_status=$?
+set -e
+test "$dotdot_status" -ne 0 || fail "dot-dot mirror destination was accepted"
+test "$dotdot_status" -ne 124 || fail "dot-dot mirror destination reached a hanging move"
+test -f "$TEST_REPO/apps/schema/app/tracked.txt" || fail "dot-dot destination displaced the app mirror"
+
 mkdir -p "$TEST_REPO/scratch/empty-staged"
 if MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
     "$TEST_REPO/scratch/empty-staged" "database/empty"; then
@@ -46,8 +60,17 @@ if MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
   fail "staging outside scratch was accepted"
 fi
 
+mkdir -p "$TEST_REPO/scratch/symlink-content-staged"
+printf 'content\n' > "$TEST_REPO/scratch/symlink-content-staged/file.txt"
+ln -s "$TEST_REPO/outside" "$TEST_REPO/scratch/symlink-content-staged/outside-link"
+if MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
+    "$TEST_REPO/scratch/symlink-content-staged" "database/symlink-content"; then
+  fail "staging with symlinked content was accepted"
+fi
+
 mkdir -p "$TEST_REPO/outside" "$TEST_REPO/scratch/symlink-staged"
 printf 'outside\n' > "$TEST_REPO/scratch/symlink-staged/file.txt"
+mv "$TEST_REPO/apps" "$TEST_REPO/apps-real"
 ln -s "$TEST_REPO/outside" "$TEST_REPO/apps"
 if MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
     "$TEST_REPO/scratch/symlink-staged" "apps/schema/app"; then
@@ -92,6 +115,12 @@ if command -v pwsh >/dev/null 2>&1; then
     fail "PowerShell replace_mirror.ps1 accepted empty staging"
   fi
 
+  printf 'not a directory\n' > "$TEST_REPO/scratch/file-staged-ps"
+  if pwsh -NoProfile -File "$TEST_REPO/ps-scripts/replace_mirror.ps1" \
+      -StagedDir "$TEST_REPO/scratch/file-staged-ps" -Destination "database/file-ps"; then
+    fail "PowerShell replace_mirror.ps1 accepted a file as staging input"
+  fi
+
   printf 'local change\n' >> "$TEST_REPO/database/mirror-ps/new.txt"
   mkdir -p "$TEST_REPO/scratch/dirty-staged-ps"
   printf 'replacement\n' > "$TEST_REPO/scratch/dirty-staged-ps/new.txt"
@@ -109,10 +138,96 @@ else
   echo "SKIP: pwsh not found — replace_mirror.ps1 and normalize_apx.ps1 were not exercised" >&2
 fi
 
-python3 "$REPO_ROOT/scripts/check_local_links.py" \
-  "$REPO_ROOT/.agents/skills/uc-apx" \
-  "$REPO_ROOT/README.md" \
-  "$REPO_ROOT/agents.md" \
-  "$REPO_ROOT/app_context/README.md"
+test -f "$REPO_ROOT/.env.example" || fail ".env.example is missing"
+git -C "$REPO_ROOT" check-ignore -q .env || fail ".env is not ignored"
+
+ENV_FILE="$TEST_ROOT/project.env"
+INJECTION_MARKER="$TEST_ROOT/env-was-executed"
+cat > "$ENV_FILE" <<EOF
+PROJECT_NAME=\$(touch $INJECTION_MARKER)
+DB_TARGET_SCHEMA=SAMPLE
+APEX_APP_ID=100
+APEX_APP_SLUG=sample-app
+SQLCL_CONNECTION=dev1_SAMPLE
+DB_ENVIRONMENT=development
+DB_EXPECTED_USER=SAMPLE
+DB_REQUIRED_ROLE=NONE
+INSTALL_UC_APX=false
+UC_APX_SKILLS_AGENT=universal
+EOF
+
+ENV_OUTPUT="$(bash -c 'source "$1" "$2"; printf "%s|%s" "$PROJECT_NAME" "$DB_TARGET_SCHEMA"' \
+  _ "$REPO_ROOT/scripts/load_env.sh" "$ENV_FILE")"
+test "$ENV_OUTPUT" = "\$(touch $INJECTION_MARKER)|SAMPLE" || fail "environment loader changed literal values"
+test ! -e "$INJECTION_MARKER" || fail "environment loader executed .env content"
+
+MISSING_ROLE_ENV_FILE="$TEST_ROOT/missing-role.env"
+grep -v '^DB_REQUIRED_ROLE=' "$ENV_FILE" > "$MISSING_ROLE_ENV_FILE"
+if DB_REQUIRED_ROLE=INHERITED bash -c 'source "$1" "$2"' \
+    _ "$REPO_ROOT/scripts/load_env.sh" "$MISSING_ROLE_ENV_FILE"; then
+  fail "environment loader accepted an inherited value for a missing setting"
+fi
+
+PROJECT_ENV_FILE="$ENV_FILE" "$REPO_ROOT/scripts/check_db_target.sh" read
+
+PROD_ENV_FILE="$TEST_ROOT/production.env"
+sed \
+  -e 's/SQLCL_CONNECTION=dev1_SAMPLE/SQLCL_CONNECTION=primary-prod-SAMPLE/' \
+  -e 's/DB_ENVIRONMENT=development/DB_ENVIRONMENT=production/' \
+  -e 's/DB_EXPECTED_USER=SAMPLE/DB_EXPECTED_USER=SAMPLE_AGENT_RO/' \
+  -e 's/DB_REQUIRED_ROLE=NONE/DB_REQUIRED_ROLE=SAMPLE_AGENT_PROD_RO/' \
+  "$ENV_FILE" > "$PROD_ENV_FILE"
+PROJECT_ENV_FILE="$PROD_ENV_FILE" "$REPO_ROOT/scripts/check_db_target.sh" read
+if PROJECT_ENV_FILE="$PROD_ENV_FILE" "$REPO_ROOT/scripts/check_db_target.sh" write; then
+  fail "production write operation was accepted"
+fi
+
+MISLABELED_ENV_FILE="$TEST_ROOT/mislabeled.env"
+sed 's/SQLCL_CONNECTION=dev1_SAMPLE/SQLCL_CONNECTION=sample_prod/' "$ENV_FILE" > "$MISLABELED_ENV_FILE"
+if PROJECT_ENV_FILE="$MISLABELED_ENV_FILE" "$REPO_ROOT/scripts/check_db_target.sh" read; then
+  fail "production-like connection name was accepted as development"
+fi
+
+NUMBERED_PROD_ENV_FILE="$TEST_ROOT/numbered-prod.env"
+sed 's/SQLCL_CONNECTION=dev1_SAMPLE/SQLCL_CONNECTION=sample-prod1/' "$ENV_FILE" > "$NUMBERED_PROD_ENV_FILE"
+if PROJECT_ENV_FILE="$NUMBERED_PROD_ENV_FILE" "$REPO_ROOT/scripts/check_db_target.sh" read; then
+  fail "numbered production-like connection name was accepted as development"
+fi
+
+PROD_NO_ROLE_ENV_FILE="$TEST_ROOT/production-no-role.env"
+sed \
+  -e 's/SQLCL_CONNECTION=dev1_SAMPLE/SQLCL_CONNECTION=primary-prod-SAMPLE/' \
+  -e 's/DB_ENVIRONMENT=development/DB_ENVIRONMENT=production/' \
+  -e 's/DB_EXPECTED_USER=SAMPLE/DB_EXPECTED_USER=SAMPLE_AGENT_RO/' \
+  "$ENV_FILE" > "$PROD_NO_ROLE_ENV_FILE"
+if PROJECT_ENV_FILE="$PROD_NO_ROLE_ENV_FILE" "$REPO_ROOT/scripts/check_db_target.sh" read; then
+  fail "production connection without a read-only role was accepted"
+fi
+
+test -f "$REPO_ROOT/.agents/skills/install-uc-apx/SKILL.md" || fail "conditional uc-apx installer skill is missing"
+test ! -d "$REPO_ROOT/.agents/skills/uc-apx" || fail "bundled uc-apx skill content is still present"
+EMPTY_CLAUDE_SKILL_DIR="$(find "$REPO_ROOT/.claude/skills" -mindepth 1 -maxdepth 1 -type d -empty -print -quit)"
+test -z "$EMPTY_CLAUDE_SKILL_DIR" || fail "empty legacy Claude skill directory remains: $EMPTY_CLAUDE_SKILL_DIR"
+
+grep -q "DBMS_METADATA.GET_DDL(''PROCEDURE''" "$REPO_ROOT/scripts/backup_db.sql" || fail "procedure metadata export is missing"
+grep -q "DBMS_METADATA.GET_DDL(''FUNCTION''" "$REPO_ROOT/scripts/backup_db.sql" || fail "function metadata export is missing"
+grep -q "DBMS_METADATA.GET_DDL(''TRIGGER''" "$REPO_ROOT/scripts/backup_db.sql" || fail "trigger metadata export is missing"
+grep -q 'application.apx' "$REPO_ROOT/scripts/export_apps.sh" || fail "APEX export does not require application.apx"
+grep -q 'apexlang.json' "$REPO_ROOT/scripts/export_apps.sh" || fail "APEX export does not require .apex/apexlang.json"
+! grep -Eqi '(uc-apx|apex)[[:space:]]+validate' "$REPO_ROOT/scripts/export_apps.sh" "$REPO_ROOT/scripts/export_apps.ps1" "$REPO_ROOT/scripts/export_apps.sql" || fail "APEX export invokes validation"
+grep -q 'session_roles' "$REPO_ROOT/scripts/verify_db_access.sql" || fail "post-connect production role verification is missing"
+grep -q 'session_privs' "$REPO_ROOT/scripts/verify_db_access.sql" || fail "post-connect production privilege verification is missing"
+
+LINK_FIXTURE="$TEST_ROOT/link-fixture.md"
+printf '[missing](not-here.md)\n' > "$LINK_FIXTURE"
+if python3 "$REPO_ROOT/scripts/check_local_links.py" "$LINK_FIXTURE"; then
+  fail "local-link checker accepted a broken link"
+fi
+printf '%s\n' '````markdown' '[example](not-a-real-file.md)' '````' > "$LINK_FIXTURE"
+python3 "$REPO_ROOT/scripts/check_local_links.py" "$LINK_FIXTURE" || fail "local-link checker treated fenced example links as real"
+
+python3 "$REPO_ROOT/scripts/check_local_links.py" "$REPO_ROOT"
+
+python3 "$REPO_ROOT/scripts/test_setup_graphify.py"
 
 echo "PASS: template synchronization and documentation checks"

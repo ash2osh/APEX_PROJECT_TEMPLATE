@@ -10,12 +10,18 @@ from urllib.parse import unquote
 
 
 LINK_RE = re.compile(r"(?<!!)\[[^\]]*\]\(([^)]+)\)")
+FENCED_CODE_RE = re.compile(r"^\s*(`{3,}|~{3,}).*?^\s*\1\s*$", re.MULTILINE | re.DOTALL)
+SKIP_PARTS = {".git", "scratch", "graphify-out", "__pycache__"}
 
 
 def markdown_files(paths: list[Path]):
     for path in paths:
         if path.is_dir():
-            yield from sorted(path.rglob("*.md"))
+            yield from (
+                candidate
+                for candidate in sorted(path.rglob("*.md"))
+                if not SKIP_PARTS.intersection(candidate.relative_to(path).parts)
+            )
         elif path.is_file() and path.suffix.lower() == ".md":
             yield path
         else:
@@ -25,7 +31,8 @@ def markdown_files(paths: list[Path]):
 def missing_links(files):
     for source in files:
         text = source.read_text(encoding="utf-8")
-        for match in LINK_RE.finditer(text):
+        searchable = FENCED_CODE_RE.sub(lambda match: "\n" * match.group(0).count("\n"), text)
+        for match in LINK_RE.finditer(searchable):
             target = match.group(1).strip()
             if target.startswith("<") and target.endswith(">"):
                 target = target[1:-1]
@@ -36,7 +43,7 @@ def missing_links(files):
                 continue
             resolved = (source.parent / target).resolve()
             if not resolved.exists():
-                line = text.count("\n", 0, match.start()) + 1
+                line = searchable.count("\n", 0, match.start()) + 1
                 yield source, line, target
 
 

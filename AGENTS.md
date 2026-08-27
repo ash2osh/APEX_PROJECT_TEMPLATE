@@ -17,5 +17,10 @@ When a task edits files under `apps/`, also read
 when the optional `uc-apx` CLI is available and how to fall back when it is
 not.
 
+For project setup, if `.env` exists and its safely parsed
+`INSTALL_UC_APX` value is `true`, read and follow
+[`.agents/skills/install-uc-apx/SKILL.md`](.agents/skills/install-uc-apx/SKILL.md).
+Never execute `.env` as shell code.
+
 The referenced files are authoritative together. Do not replace project
 rules with this bootstrap file, and preserve unrelated working-tree changes.

@@ -1,9 +1,9 @@
 # app_context/ — per-app knowledge base
 
-A persistent, durable knowledge base for each APEX application in
-`apps/{{SCHEMA}}/`, separate from `self_improve.md` (which is
-repository-wide) and from `database/`/`apps/` (which are synchronized
-mirrors of live state, not knowledge). Where `self_improve.md` records
+A persistent, durable knowledge base for each APEX application under `apps/`,
+separate from `self_improve.md` (which is repository-wide), editable APEX
+source under `apps/`, and the generated `database/` mirror. Where
+`self_improve.md` records
 lessons about how to work *in this repo*, `app_context/` records what is
 actually true *about one application* — its purpose, its non-obvious
 patterns, its known bugs and workarounds.
@@ -13,7 +13,7 @@ patterns, its known bugs and workarounds.
 One folder per application:
 
 ```
-app_context/{{APP_SLUG}}_{{APP_ID}}/
+app_context/<app-slug>_<app-id>/
   context.md          # required — see template below
   1-pages/             # optional — one file per page, only when a page is
                         # complex enough to need its own notes
@@ -27,8 +27,8 @@ does not need to exist before then.
 
 ## Rule
 
-Before touching any app under `apps/{{SCHEMA}}/{{APP_SLUG}}/`, check
-whether `app_context/{{APP_SLUG}}_{{APP_ID}}/context.md` already exists and
+Before touching an app under `apps/<schema>/<app-slug>/`, check whether
+`app_context/<app-slug>_<app-id>/context.md` already exists and
 read it first — it may already document the exact pattern, bug, or
 constraint you're about to rediscover. After resolving a non-trivial issue,
 or establishing knowledge about the app that would save real time next
@@ -40,7 +40,7 @@ speculation).
 ## `context.md` template
 
 ```markdown
-# {{APP_SLUG}} (app {{APP_ID}})
+# <app-slug> (app <app-id>)
 
 ## Purpose
 

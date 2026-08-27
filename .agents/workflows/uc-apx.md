@@ -7,8 +7,8 @@ description: Conditional workflow for editing apexlang (.apx) files with the opt
 
 `uc-apx` is a third-party structural CLI for Oracle APEX apps stored in
 apexlang (`.apx`) format (https://github.com/United-Codes/uc-apx). It is
-**not** guaranteed to be installed. Never assume its presence in a fresh
-clone of this template.
+not bundled and is not guaranteed to be installed. Never assume its presence
+in a fresh clone.
 
 ## Availability check (do this first)
 
@@ -16,28 +16,23 @@ clone of this template.
 command -v uc-apx >/dev/null 2>&1 && uc-apx version
 ```
 
-- If this fails (no output / command not found): stop using this workflow.
-  Fall back to plain SQLcl `apex export -exptype APEXLANG` / `apex import`
-  and the general `apex` skill for reading and editing `.apx` files by hand.
+- If this fails: edit APEXlang source in place under `apps/` using the general
+  `apex` guidance, or set `INSTALL_UC_APX=true` in `.env` and invoke the
+  [`install-uc-apx` skill](../skills/install-uc-apx/SKILL.md).
 - If it succeeds: continue below.
 
-## Installing uc-apx (optional, once per machine)
+## Installation and skills
 
-Download a release for your platform from
-https://github.com/United-Codes/uc-apx and place the binary on `PATH` as
-`uc-apx`. Then, once per project, install its bundled coding-agent skills:
-
-```bash
-uc-apx skills sync --agent claude-code
-```
-
-(Use `--agent universal` for non-Claude clients, and add `--global` to
-install into `~/.claude/skills` once for all projects instead of this repo's
-`.claude/skills`.)
+The only supported template flow is the opt-in
+[`install-uc-apx` skill](../skills/install-uc-apx/SKILL.md). It is gated by
+`INSTALL_UC_APX=true`, keeps the binary user-managed, and synchronizes skills
+project-locally. Do not add `--global` and do not vendor generated uc-apx
+skills into the template.
 
 ## Core commands (when installed)
 
-Run from the application directory, e.g. `--app-dir apps/{{SCHEMA}}/{{APP_SLUG}}`:
+Run against the configured app directory,
+`apps/$DB_TARGET_SCHEMA/$APEX_APP_SLUG`:
 
 - `uc-apx overview` — summary of the application.
 - `uc-apx search <term>` — search names, SQL, and PL/SQL across the app.
@@ -52,10 +47,12 @@ Run from the application directory, e.g. `--app-dir apps/{{SCHEMA}}/{{APP_SLUG}}
 - `uc-apx schema` — the database objects (tables, views, packages, …) the
   app uses.
 
-## Mandatory gate after any edit
+## Separate validation step
 
 ```bash
-uc-apx validate --app-dir apps/{{SCHEMA}}/{{APP_SLUG}}
+uc-apx validate --app-dir "apps/$DB_TARGET_SCHEMA/$APEX_APP_SLUG"
 ```
 
-Never hand off or import a `.apx` change without a clean `validate` run.
+Validation is useful before handing off an application edit, but it is never
+part of `export_apps.sh` or `export_apps.ps1`. Export stages and replaces the
+app without invoking validation, as required by this template.

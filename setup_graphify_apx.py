@@ -3,7 +3,12 @@
 Ensures tree-sitter-sql is installed and patches the local Graphify package
 to natively recognize .apx (Oracle APEX export) files as AST code files.
 """
-import os, glob, subprocess, sys, shutil
+import glob
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
 
 def find_graphify_dirs():
     dirs = []
@@ -33,7 +38,59 @@ def find_graphify_dirs():
 
     return list(set(dirs))
 
-def setup_graphify_apx():
+def patch_graphify_dir(base: Path) -> bool:
+    """Patch one Graphify package, returning false unless support is complete."""
+    detect_path = base / "detect.py"
+    extract_path = base / "extract.py"
+    missing = [path for path in (detect_path, extract_path) if not path.is_file()]
+    if missing:
+        print(f"Warning: Graphify at '{base}' is missing required module(s): "
+              + ", ".join(path.name for path in missing))
+        return False
+
+    detect = detect_path.read_text(encoding="utf-8")
+    extract = extract_path.read_text(encoding="utf-8")
+    patched_detect = detect
+    patched_extract = extract
+
+    if "'.apx'" not in patched_detect:
+        patched_detect = patched_detect.replace("'.sql',", "'.sql', '.apx',", 1)
+        if patched_detect == detect:
+            print(f"Warning: could not patch {detect_path}; expected \"'.sql',\" pattern not found")
+            return False
+
+    if '".apx": extract_sql,' not in patched_extract:
+        before = patched_extract
+        patched_extract = patched_extract.replace(
+            '".sql": extract_sql,',
+            '".sql": extract_sql,\n    ".apx": extract_sql,',
+            1,
+        )
+        if patched_extract == before:
+            print(f"Warning: could not patch {extract_path}; SQL extractor mapping not found")
+            return False
+
+    if '".apx": "sql",' not in patched_extract:
+        before = patched_extract
+        patched_extract = patched_extract.replace(
+            '".sql": "sql",',
+            '".sql": "sql",\n    ".apx": "sql",',
+            1,
+        )
+        if patched_extract == before:
+            print(f"Warning: could not patch {extract_path}; SQL language mapping not found")
+            return False
+
+    # Do not leave a package partially patched because one later pattern failed.
+    if patched_detect != detect:
+        detect_path.write_text(patched_detect, encoding="utf-8")
+    if patched_extract != extract:
+        extract_path.write_text(patched_extract, encoding="utf-8")
+    print(f"Graphify at '{base}' is configured for SQL and .apx support")
+    return True
+
+
+def setup_graphify_apx() -> bool:
     print("Checking Graphify & tree-sitter-sql setup...")
 
     # Attempt uv pip install first
@@ -58,45 +115,10 @@ def setup_graphify_apx():
     g_dirs = find_graphify_dirs()
     if not g_dirs:
         print("Warning: Graphify installation not found. Please install Graphify first (e.g. uv tool install graphify).")
-        return
+        return False
 
-    for base in g_dirs:
-        d = os.path.join(base, "detect.py")
-        e = os.path.join(base, "extract.py")
-        patched_ok = True
-
-        if os.path.exists(d):
-            with open(d, "r") as f:
-                content = f.read()
-            if "'.apx'" not in content:
-                patched = content.replace("'.sql',", "'.sql', '.apx',")
-                if patched == content:
-                    print(f"Warning: could not patch {d} — expected \"'.sql',\" pattern not found; .apx files will not be detected as code")
-                    patched_ok = False
-                else:
-                    with open(d, "w") as f:
-                        f.write(patched)
-
-        if os.path.exists(e):
-            with open(e, "r") as f:
-                content = f.read()
-            if '".apx":' not in content:
-                patched = content.replace('".sql": extract_sql,', '".sql": extract_sql,\n    ".apx": extract_sql,')
-                if patched == content:
-                    print(f"Warning: could not patch {e} — expected '\".sql\": extract_sql,' pattern not found")
-                    patched_ok = False
-                patched2 = patched.replace('".sql": "sql",', '".sql": "sql",\n    ".apx": "sql",')
-                if patched2 == patched:
-                    print(f"Warning: could not patch {e} — expected '\".sql\": \"sql\",' pattern not found")
-                    patched_ok = False
-                if patched2 != content:
-                    with open(e, "w") as f:
-                        f.write(patched2)
-
-        if patched_ok:
-            print(f"✅ Graphify at '{base}' successfully configured for SQL & .apx support!")
-        else:
-            print(f"⚠️  Graphify at '{base}' was only partially configured — see warnings above; .apx support may not work until this script is updated for the installed Graphify version.")
+    results = [patch_graphify_dir(Path(base)) for base in g_dirs]
+    return all(results)
 
 if __name__ == "__main__":
-    setup_graphify_apx()
+    raise SystemExit(0 if setup_graphify_apx() else 1)

@@ -1,32 +1,17 @@
 # Skills Index
 
-Every skill in this repo lives under one of the three group folders below,
-as `<group>/<skill-name>/SKILL.md`. This file is a scannable index — name,
-one-line purpose, and when to reach for it — so you don't have to open 27
-folders to find the right one. `.claude/skills/<skill-name>/SKILL.md` has a
-thin pointer for each, matching Claude Code's required flat discovery
-layout; the full content lives here.
+This file indexes the project-local skills. `.claude/skills/<skill-name>/`
+contains thin discovery pointers; canonical content lives under
+`.agents/skills/`.
 
-## `uc-apx/` — apexlang (`.apx`) editing
-
-Conditional on the `uc-apx` CLI being installed — see
-[`.agents/workflows/uc-apx.md`](../workflows/uc-apx.md) for the availability
-check and fallback. Start with `getting-started`.
+## Optional `uc-apx`
 
 | Skill | Use when |
 |---|---|
-| [getting-started](uc-apx/getting-started/SKILL.md) | Any task touching `.apx` files — start here first. Routes to the right skill below and states the mandatory validate gate. |
-| [navigate-app](uc-apx/navigate-app/SKILL.md) | Orienting in an unfamiliar apexlang project, or finding where a feature lives before reading files. |
-| [investigate-component](uc-apx/investigate-component/SKILL.md) | A symptom or bug report needs to be traced to the responsible page, region, or shared component. |
-| [inspect-construct-schema](uc-apx/inspect-construct-schema/SKILL.md) | Before hand-editing a construct — learn its conventional properties/shape instead of guessing keys. |
-| [create-page](uc-apx/create-page/SKILL.md) | Scaffolding a new APEX page (form, report, dashboard). |
-| [add-region-or-item-to-page](uc-apx/add-region-or-item-to-page/SKILL.md) | Adding a region, page item, button, process, or branch to an existing page. |
-| [edit-shared-component](uc-apx/edit-shared-component/SKILL.md) | Hand-editing shared components (authentications, app-items, page-groups, LOV entries) with no dedicated scaffolder. |
-| [edit-authorization](uc-apx/edit-authorization/SKILL.md) | Creating, editing, applying, or removing an authorization scheme. |
-| [delete-component](uc-apx/delete-component/SKILL.md) | Removing any apexlang construct — region, item, button, page, etc. |
-| [audit-authorization](uc-apx/audit-authorization/SKILL.md) | A whole-app authorization review — what exists, where it's used, what's unprotected. |
-| [analyze-db-dependencies](uc-apx/analyze-db-dependencies/SKILL.md) | Impact analysis — which DB objects an app touches, what breaks if one changes. |
-| [validate-after-edit](uc-apx/validate-after-edit/SKILL.md) | After any `.apx` edit, before declaring it done — mandatory verification gate. |
+| [install-uc-apx](install-uc-apx/SKILL.md) | `INSTALL_UC_APX=true` and the user wants to verify/install the optional CLI and synchronize its upstream skills project-locally. |
+
+The generated uc-apx skill payload is not part of this repository. See the
+[optional workflow](../workflows/uc-apx.md) for use and fallback behavior.
 
 ## `sqlcl-mcp-r0/` — SQLcl MCP at restriction level 0
 

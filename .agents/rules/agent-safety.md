@@ -19,6 +19,11 @@ Apply these gates in every repository workflow, regardless of client or model.
 ## Database and SQLcl
 
 - Use only a named saved connection; never infer or guess a production target.
+- Treat production as read-only without exception in agent workflows. Use a
+  dedicated non-owner account with the configured read-only role. If a saved
+  connection, database, or service name resembles production while its
+  classification is unknown or non-production, stop and ask the user whether
+  it is production.
 - Before SQL, verify database name, service, session user, current schema, and
   environment with a read-only identity query.
 - Inspect scripts before `@`, `@@`, `START`, `SCRIPT`, APEX import, or Liquibase
@@ -27,11 +32,16 @@ Apply these gates in every repository workflow, regardless of client or model.
 - Require explicit approval immediately before `COMMIT`, bulk DML, destructive
   DDL, `TRUNCATE`, `DROP`, `PURGE`, or irreversible migrations unless the
   user's current request already authorizes the exact operation and target.
-- Never change production databases or services unless the user explicitly
-  authorizes the exact operation and target.
-- For SQLcl/SQL*Plus scripts, use `SET DEFINE OFF;`; use UTF-8 session settings
-  when localized text or generated source is involved.
-- For APEX exports, normalize `.apx` files to LF and validate before delivery.
+- Never run write operations against production, even when a broader task asks
+  for database changes; prepare the change for an approved non-production or
+  human-controlled deployment path instead.
+- Keep `SET DEFINE OFF;` while executing application or PL/SQL source. A
+  controlled wrapper may briefly enable substitution for validated positional
+  configuration, then must disable it before source payloads. Use UTF-8 session
+  settings when localized text or generated source is involved.
+- For APEX exports, normalize `.apx` files to LF. Export and replacement never
+  invoke validation; validation is a separate explicit verification step for
+  application edits.
 - Remember that SQLcl R0 expands SQLcl/OS capabilities; it does not grant
   Oracle privileges or make an action safe.
 

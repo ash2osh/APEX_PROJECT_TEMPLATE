@@ -6,6 +6,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+if (-not (Test-Path -LiteralPath $StagedDir -PathType Container)) {
+  throw "staging directory does not exist or is not a directory: $StagedDir"
+}
 $stagedPath = (Resolve-Path -LiteralPath $StagedDir).Path
 $scratchPath = Join-Path $repoRoot "scratch"
 New-Item -ItemType Directory -Force -Path $scratchPath | Out-Null
@@ -38,6 +41,12 @@ $stagedFiles = Get-ChildItem -LiteralPath $stagedPath -File -Recurse | Select-Ob
 if ($null -eq $stagedFiles) {
   throw "staging directory is empty: $stagedPath"
 }
+$stagedLink = Get-ChildItem -LiteralPath $stagedPath -Force -Recurse |
+  Where-Object { $_.Attributes -band [System.IO.FileAttributes]::ReparsePoint } |
+  Select-Object -First 1
+if ($null -ne $stagedLink) {
+  throw "staging directory contains a symbolic link or junction: $($stagedLink.FullName)"
+}
 
 $dirty = @(git -C $repoRoot status --porcelain --untracked-files=all -- $destinationPath)
 $gitExitCode = $LASTEXITCODE
@@ -62,14 +71,36 @@ $canonicalApproved = ($canonicalDestinationParts[0] -eq "database" -and $canonic
 if (-not $canonicalApproved) {
   throw "resolved destination is not an approved generated mirror: $canonicalRelativeDestination"
 }
+if ([System.IO.Path]::GetPathRoot($stagedPath) -ne [System.IO.Path]::GetPathRoot($destinationPath)) {
+  throw "staging and destination must be on the same filesystem volume"
+}
 $mirrorName = Split-Path -Leaf $destinationPath
 $backupPath = Join-Path $scratchPath (".mirror-backup.{0}.{1}" -f $mirrorName, $PID)
 if (Test-Path -LiteralPath $backupPath) {
   throw "temporary replacement path already exists: $backupPath"
 }
 
+$lockRoot = Join-Path $scratchRoot ".mirror-locks"
+New-Item -ItemType Directory -Force -Path $lockRoot | Out-Null
+$hashBytes = [System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($canonicalRelativeDestination))
+$lockName = ([System.Convert]::ToHexString($hashBytes)).Substring(0, 16) + ".lock"
+$lockPath = Join-Path $lockRoot $lockName
+try {
+  $lockHandle = [System.IO.File]::Open($lockPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+} catch {
+  throw "another mirror replacement is already running for $canonicalRelativeDestination"
+}
+
 $hadOldMirror = Test-Path -LiteralPath $destinationPath
 try {
+  # Recheck after taking the lock to minimize the check-to-replace window.
+  $dirty = @(git -C $repoRoot status --porcelain --untracked-files=all -- $destinationPath)
+  if ($LASTEXITCODE -ne 0) {
+    throw "unable to recheck Git status for mirror: $canonicalRelativeDestination"
+  }
+  if (-not [string]::IsNullOrWhiteSpace(($dirty -join "`n"))) {
+    throw "refusing to replace dirty mirror: $canonicalRelativeDestination"
+  }
   if ($hadOldMirror) {
     Move-Item -LiteralPath $destinationPath -Destination $backupPath
   }
@@ -84,6 +115,9 @@ try {
     }
   }
   throw
+} finally {
+  if ($null -ne $lockHandle) { $lockHandle.Dispose() }
+  if (Test-Path -LiteralPath $lockPath -PathType Leaf) { Remove-Item -LiteralPath $lockPath -Force }
 }
 
 if (Test-Path -LiteralPath $backupPath) {

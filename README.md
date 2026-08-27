@@ -1,4 +1,4 @@
-# Project Template ({{PROJECT_NAME}})
+# Oracle APEX Project Template
 
 Generic starting point for an Oracle APEX + Oracle Database project, built
 to work with any coding agent (Claude Code, Codex, Gemini, Copilot, etc.) —
@@ -24,20 +24,11 @@ Run once per machine (idempotent — safe to re-run anytime to refresh):
 sql -S -noupdates /nolog -e "skills sync"
 ```
 
-Optional, only if you want the structural `.apx` editing CLI:
-
-```bash
-# Install uc-apx from https://github.com/United-Codes/uc-apx, then, to
-# refresh the skills already vendored in this repo (.agents/skills/,
-# mirrored under .claude/skills/):
-uc-apx skills sync --agent claude-code
-```
-
-`uc-apx` is genuinely optional — every workflow and skill in this template
-that uses it ([`.agents/workflows/uc-apx.md`](.agents/workflows/uc-apx.md)
-and the skills listed in `agents.md` §7) checks for it first and falls back
-to plain SQLcl `apex export/import` when it is absent. Never assume it is
-installed on a machine you haven't checked.
+`uc-apx` is genuinely optional and is not bundled. To use it, set
+`INSTALL_UC_APX=true` in `.env`, then ask an agent to follow the
+[project installer skill](.agents/skills/install-uc-apx/SKILL.md). It verifies
+the user-managed CLI installation and synchronizes upstream skills into this
+project. With the default `false`, no installation or synchronization occurs.
 
 Optional, only if you want a queryable knowledge graph of this codebase:
 
@@ -53,15 +44,13 @@ never installed.
 
 ## Instantiating this template
 
-1. Copy/clone this repo to your new project's location and rename the
-   directory.
-2. Find and replace every placeholder token below across all files (there
-   is no substitution script by design — do this by hand so you actually
-   see every file that mentions your project).
+1. Copy or clone this repo to the new project's location.
+2. Copy `.env.example` to `.env` and set the project, schema, application,
+   named SQLcl connection, environment, expected user, production role, and
+   optional-tool values. `.env` is ignored and must not contain credentials.
 3. Fill in `agents.md` §6 (Schema Ownership) with how this project actually
    splits schemas.
-4. Set up your SQLcl saved connection(s) using the
-   `{{CONN_PREFIX}}_{{SCHEMA}}` naming convention documented in `agents.md`.
+4. Create the exact SQLcl saved connection named by `SQLCL_CONNECTION`.
 5. Recreate `.claude/settings.local.json` locally (it is intentionally not
    tracked in this repo — Claude Code treats `settings.local.json` as a
    personal, per-machine file, not something to commit and share). A
@@ -87,33 +76,38 @@ instead of being overwritten. Export does not run APEX validation; run
 `uc-apx validate --app-dir <app>` separately when validating application
 changes.
 
-## Placeholder tokens
+## Configuration
 
-| Token | Appears in | Meaning | Example |
-|---|---|---|---|
-| `{{PROJECT_NAME}}` | `README.md`, `agents.md` | Short project name | `acme` |
-| `{{SCHEMA}}` | `agents.md`, `.agents/workflows/uc-apx.md`, `scripts/*` | Primary application/data schema | `ACME` |
-| `{{APP_ID}}` | `agents.md`, `scripts/*` | Primary APEX application ID | `100` |
-| `{{APP_SLUG}}` | `agents.md`, `.agents/workflows/uc-apx.md`, `scripts/*` | Primary APEX application folder slug | `example-app` |
-| `{{CONN_PREFIX}}` | `agents.md`, `scripts/*` | SQLcl saved-connection prefix | `dev1` |
-| `{{CONN_NAME}}` | `scripts/export_apps.sql`, `scripts/backup_db.sql` | Full saved-connection name (`{{CONN_PREFIX}}_{{SCHEMA}}`) | `dev1_ACME` |
+The strict loaders accept only the documented settings, reject missing or
+duplicate keys, and treat every value literally. They never evaluate `.env` as
+code. Credentials stay in SQLcl's saved connection store.
+
+Production requires `DB_ENVIRONMENT=production`, a dedicated non-owner
+`DB_EXPECTED_USER`, and `DB_REQUIRED_ROLE` naming the enabled read-only role.
+The pre-connect guard blocks writes and suspicious connection-name
+misclassification; the SQL scripts verify the real session identity and
+privileges after connecting. See
+[production database safety](docs/production-database-safety.md).
+The policy intentionally does not grant a parsing-schema or APEX administrator
+login merely to export an app; use the reviewed APEX artifact from
+development/staging as described in that document.
 
 ## Directory layout
 
 ```
-apps/{{SCHEMA}}/{{APP_SLUG}}/   Oracle APEX apps, APEXLANG export format
-database/{{SCHEMA}}/            DBMS_METADATA schema mirror, one file per object
-app_context/{{APP_SLUG}}_{{APP_ID}}/  Durable per-app knowledge base (see app_context/README.md)
-ai_generate/YYYY-MM-DD/         All AI-generated SQL/PLSQL/APEX output (tracked in git)
+apps/<schema>/<app-slug>/       Editable Oracle APEX source, APEXLANG format
+database/<schema>/              Generated DBMS_METADATA mirror, no table data
+app_context/<app-slug>_<id>/    Durable per-app knowledge base
+ai_generate/YYYY-MM-DD/         AI-generated SQL/PLSQL deployment scripts
 scratch/                        Local throwaway space (gitignored)
 scripts/                        Export/backup automation (.sh + .ps1 pairs)
 .agents/                        Canonical, client-agnostic agent instructions
 .claude/                        Thin Claude-Code-specific pointers into .agents/
 ```
 
-`.agents/skills/` groups every skill by source — `uc-apx/`, `sqlcl-mcp-r0/`,
-`superpowers/` — with one file, [`.agents/skills/SKILLS.md`](.agents/skills/SKILLS.md),
-indexing all of them by name and when to use each. `superpowers/` is a
+`.agents/skills/` contains the small `install-uc-apx` opt-in skill,
+`sqlcl-mcp-r0`, and the vendored `superpowers/` workflow skills. The
+[skills index](.agents/skills/SKILLS.md) describes them. `superpowers/` is a
 vendored, local copy of the [superpowers](https://github.com/obra/superpowers)
 workflow skill library (brainstorming, writing-plans, TDD, code review, etc.
 — see `agents.md` §9) so those skills are available on any machine or agent

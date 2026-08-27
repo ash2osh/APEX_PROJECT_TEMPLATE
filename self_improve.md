@@ -13,10 +13,9 @@ This file is the durable learning log for this project. It supplements
    the actual parser/compiler. For SQLcl or database work, confirm the exact
    requested connection before executing anything.
 4. Prefer the smallest complete correction and verify it with the narrowest
-   relevant check before broader validation. Keep generated or modified SQL
-   and PL/SQL output under `ai_generate/YYYY-MM-DD/` as required by
-   `agents.md`; do not edit synchronized source-of-truth files under
-   `database/` or `apps/` directly.
+   relevant check before broader validation. Edit APEX source in place under
+   `apps/`; keep generated or modified SQL and PL/SQL deployment scripts under
+   `ai_generate/YYYY-MM-DD/`; never hand-edit the generated `database/` mirror.
 
 ## Learning From Corrections
 
