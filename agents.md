@@ -116,6 +116,24 @@ documented in
 it is present — check first, and fall back to plain SQLcl export/import
 plus the `apex` skill when it is not.
 
+This repo also carries `uc-apx`'s own task-routed skills under
+[`.agents/skills/`](.agents/skills/) (canonical) with thin pointers under
+[`.claude/skills/`](.claude/skills/) — `getting-started`, `navigate-app`,
+`investigate-component`, `inspect-construct-schema`, `create-page`,
+`add-region-or-item-to-page`, `edit-shared-component`, `delete-component`,
+`edit-authorization`, `audit-authorization`, `analyze-db-dependencies`, and
+`validate-after-edit`. Every one of them assumes `uc-apx` is installed —
+run the availability check in `.agents/workflows/uc-apx.md` first; if it
+fails, these skills don't apply and the general `apex` skill takes over.
+
+`graphify` (a knowledge-graph indexer for the codebase, exposed via
+`graphify-out/`) is also optional. Its rules live in
+[`.agents/rules/graphify.md`](.agents/rules/graphify.md) (auto-applies, but
+every rule is gated on `graphify-out/graph.json` existing) and
+[`.agents/workflows/graphify.md`](.agents/workflows/graphify.md). On a new
+machine, run `python3 setup_graphify_apx.py` before first use — see
+`.graphifyignore` for what's excluded from the graph.
+
 ## 8. Testing Convention
 
 No formal test framework (e.g. utPLSQL) is assumed by this template. Until

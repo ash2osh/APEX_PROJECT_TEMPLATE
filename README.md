@@ -20,14 +20,29 @@ sql -S -noupdates /nolog -e "skills sync"
 Optional, only if you want the structural `.apx` editing CLI:
 
 ```bash
-# Install uc-apx from https://github.com/United-Codes/uc-apx, then:
+# Install uc-apx from https://github.com/United-Codes/uc-apx, then, to
+# refresh the skills already vendored in this repo (.agents/skills/,
+# mirrored under .claude/skills/):
 uc-apx skills sync --agent claude-code
 ```
 
-`uc-apx` is genuinely optional — every workflow in this template that uses
-it ([`.agents/workflows/uc-apx.md`](.agents/workflows/uc-apx.md)) checks for
-it first and falls back to plain SQLcl `apex export/import` when it is
-absent. Never assume it is installed on a machine you haven't checked.
+`uc-apx` is genuinely optional — every workflow and skill in this template
+that uses it ([`.agents/workflows/uc-apx.md`](.agents/workflows/uc-apx.md)
+and the skills listed in `agents.md` §7) checks for it first and falls back
+to plain SQLcl `apex export/import` when it is absent. Never assume it is
+installed on a machine you haven't checked.
+
+Optional, only if you want a queryable knowledge graph of this codebase:
+
+```bash
+# Install graphify, then register .apx/SQL AST support (once per machine):
+python3 setup_graphify_apx.py
+```
+
+Also optional — the rules in
+[`.agents/rules/graphify.md`](.agents/rules/graphify.md) already gate on
+`graphify-out/graph.json` existing, so nothing breaks if `graphify` is
+never installed.
 
 ## Instantiating this template
 
