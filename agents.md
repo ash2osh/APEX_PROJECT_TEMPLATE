@@ -30,11 +30,11 @@ placeholder list):
 
 | Token | Meaning | Example |
 |---|---|---|
-| `{{PROJECT_NAME}}` | Short project name | `epromhq` |
-| `{{SCHEMA}}` | Primary application/data schema | `EPROMHQ` |
-| `{{APP_ID}}` | Primary APEX application ID | `201` |
-| `{{APP_SLUG}}` | Primary APEX application folder slug | `departments-center` |
-| `{{CONN_PREFIX}}` | SQLcl saved-connection prefix | `42` |
+| `{{PROJECT_NAME}}` | Short project name | `acme` |
+| `{{SCHEMA}}` | Primary application/data schema | `ACME` |
+| `{{APP_ID}}` | Primary APEX application ID | `100` |
+| `{{APP_SLUG}}` | Primary APEX application folder slug | `example-app` |
+| `{{CONN_PREFIX}}` | SQLcl saved-connection prefix | `dev1` |
 
 ## 2. Directory Layout
 
@@ -76,7 +76,7 @@ into sync with what was actually deployed.
 - Use a UTF-8 session/JDBC encoding when localized text or generated source
   is involved.
 - Connect only by named saved connection, using the
-  `{{CONN_PREFIX}}_{{SCHEMA}}` naming convention (e.g. `42_EPROMHQ`). Never
+  `{{CONN_PREFIX}}_{{SCHEMA}}` naming convention (e.g. `dev1_ACME`). Never
   infer, guess, or fall back to a different connection than the one
   requested or matching the target schema folder.
 - Before any SQL, verify database name, service, session user, and current
@@ -143,3 +143,27 @@ transition and re-verifying database identity before acting, with any
 destructive reset script given a `zz_` filename prefix plus an explicit
 confirmation variable so it can never be reached by tab-completion or
 accidental sequence execution.
+
+## 9. Vendored Workflow Skills (superpowers)
+
+This repo carries a local copy of the [superpowers](https://github.com/obra/superpowers)
+skill library (MIT License, © Jesse Vincent — see
+[`.agents/skills/SUPERPOWERS_LICENSE`](.agents/skills/SUPERPOWERS_LICENSE))
+under `.agents/skills/` (canonical) with thin pointers under
+`.claude/skills/`, following the same pattern as every other skill in this
+repo: `brainstorming`, `writing-plans`, `executing-plans`,
+`subagent-driven-development`, `dispatching-parallel-agents`,
+`systematic-debugging`, `test-driven-development`, `using-git-worktrees`,
+`requesting-code-review`, `receiving-code-review`,
+`finishing-a-development-branch`, `verification-before-completion`,
+`writing-skills`, and `using-superpowers` (the entry point — start there).
+
+Unlike `uc-apx` or `graphify`, these are pure-content process skills with no
+external binary dependency — they work on any machine, for any coding
+agent, without installing anything. They are general software-engineering
+workflow skills (brainstorming → plan → implement → review → ship), not
+APEX/Oracle-specific; use them the same way on this project as on any other.
+If the `superpowers` plugin is also installed and enabled for a given agent
+client, that plugin's own versioned skills take precedence — this vendored
+copy exists so the same methodology is available even on a client or
+machine where the plugin isn't installed.

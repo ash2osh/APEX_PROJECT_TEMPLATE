@@ -77,12 +77,12 @@ never installed.
 
 | Token | Appears in | Meaning | Example |
 |---|---|---|---|
-| `{{PROJECT_NAME}}` | `README.md`, `agents.md` | Short project name | `epromhq` |
-| `{{SCHEMA}}` | `agents.md`, `.agents/workflows/uc-apx.md`, `scripts/*` | Primary application/data schema | `EPROMHQ` |
-| `{{APP_ID}}` | `agents.md`, `scripts/*` | Primary APEX application ID | `201` |
-| `{{APP_SLUG}}` | `agents.md`, `.agents/workflows/uc-apx.md` | Primary APEX application folder slug | `departments-center` |
-| `{{CONN_PREFIX}}` | `agents.md`, `scripts/*` | SQLcl saved-connection prefix | `42` |
-| `{{CONN_NAME}}` | `scripts/export_apps.sql`, `scripts/backup_db.sql` | Full saved-connection name (`{{CONN_PREFIX}}_{{SCHEMA}}`) | `42_EPROMHQ` |
+| `{{PROJECT_NAME}}` | `README.md`, `agents.md` | Short project name | `acme` |
+| `{{SCHEMA}}` | `agents.md`, `.agents/workflows/uc-apx.md`, `scripts/*` | Primary application/data schema | `ACME` |
+| `{{APP_ID}}` | `agents.md`, `scripts/*` | Primary APEX application ID | `100` |
+| `{{APP_SLUG}}` | `agents.md`, `.agents/workflows/uc-apx.md` | Primary APEX application folder slug | `example-app` |
+| `{{CONN_PREFIX}}` | `agents.md`, `scripts/*` | SQLcl saved-connection prefix | `dev1` |
+| `{{CONN_NAME}}` | `scripts/export_apps.sql`, `scripts/backup_db.sql` | Full saved-connection name (`{{CONN_PREFIX}}_{{SCHEMA}}`) | `dev1_ACME` |
 
 ## Directory layout
 
@@ -95,6 +95,12 @@ scripts/                        Export/backup automation (.sh + .ps1 pairs)
 .agents/                        Canonical, client-agnostic agent instructions
 .claude/                        Thin Claude-Code-specific pointers into .agents/
 ```
+
+`.agents/skills/` also carries a vendored, local copy of the
+[superpowers](https://github.com/obra/superpowers) workflow skill library
+(brainstorming, writing-plans, TDD, code review, etc. — see `agents.md` §9)
+so those skills are available on any machine or agent client, whether or
+not the superpowers plugin itself is installed.
 
 See `agents.md` for the full set of repository conventions, and `AGENTS.md`
 for the read order any coding agent should follow at the start of a task.
