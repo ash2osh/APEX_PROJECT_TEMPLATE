@@ -46,6 +46,11 @@ placeholder list):
 - `database/{{SCHEMA}}/` — `DBMS_METADATA`-based schema snapshot (tables,
   views, packages, etc.), one file per object. Also a **synchronized
   mirror** — never hand-edited.
+- `app_context/{{APP_SLUG}}_{{APP_ID}}/` — durable, per-app knowledge base
+  (purpose, architecture notes, known patterns, known bugs/gotchas). Check
+  it before touching an app, update it after resolving a non-trivial issue.
+  See [`app_context/README.md`](app_context/README.md) for the convention
+  and `context.md` template.
 - `ai_generate/YYYY-MM-DD/` — the only place new or modified SQL/PLSQL/APEX
   output is written. Tracked in git (not gitignored) — it is the durable
   record of AI-generated changes, not scratch space.

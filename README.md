@@ -89,6 +89,7 @@ never installed.
 ```
 apps/{{SCHEMA}}/{{APP_SLUG}}/   Oracle APEX apps, APEXLANG export format
 database/{{SCHEMA}}/            DBMS_METADATA schema mirror, one file per object
+app_context/{{APP_SLUG}}_{{APP_ID}}/  Durable per-app knowledge base (see app_context/README.md)
 ai_generate/YYYY-MM-DD/         All AI-generated SQL/PLSQL/APEX output (tracked in git)
 scratch/                        Local throwaway space (gitignored)
 scripts/                        Export/backup automation (.sh + .ps1 pairs)
