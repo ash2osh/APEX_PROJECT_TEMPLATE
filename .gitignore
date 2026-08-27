@@ -1,0 +1,9 @@
+# Local, gitignored throwaway space
+scratch/
+
+# Export log files
+**/export.log
+**/export_err.log
+
+# Graphify knowledge-graph output (if the graphify tool is used)
+/graphify-out/

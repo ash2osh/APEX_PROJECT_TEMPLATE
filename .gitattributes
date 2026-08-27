@@ -1,0 +1,3 @@
+# Enforce Unix line endings (LF) for APEXlang and SQL files
+*.apx text eol=lf
+*.sql text eol=lf
