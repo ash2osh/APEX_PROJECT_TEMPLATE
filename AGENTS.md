@@ -53,20 +53,21 @@ supplemental to the rules below; do not copy existing invariants into it.
 
 Use `/init`, `/init <project-name>`, or the `initialize-project` skill to create
 the gitignored `.env`; manual setup may copy `.env.example`. Configure explicit
-tables, code, and APEX parsing-schema profiles. Their schema, SQLcl saved
-connection, expected user, and role values may be identical or independent.
+tables, code, and APEX parsing-schema profiles. Their schemas, object prefixes,
+SQLcl saved connections, and expected users may be identical or independent.
 Load `.env` only through `scripts/load_env.sh` or `scripts/load_env.ps1`; it is
 parsed as literal data and must never be executed as shell code. Keep
 credentials in SQLcl's saved connection store, not in `.env`.
 
-One `.env` describes exactly one APEX application, because it holds a single
-`APEX_APP_ID`. The `apps/<parsing-schema>/<app-id>/` layout still holds many
-apps: give each one its own configuration file and select it per invocation
-with `PROJECT_ENV_FILE`, which every script and guard already honors.
+One `.env` can list one or more applications from the same parsing schema in
+`APEX_APP_ID`. The `apps/<parsing-schema>/<app-id>/` layout holds each numeric
+mirror separately. Use another gitignored configuration file when applications
+need a different parsing schema, environment, or target profile; select it with
+`PROJECT_ENV_FILE`, which every script and guard honors.
 
 ```bash
-PROJECT_ENV_FILE=.env.app100 scripts/export_apps.sh
-PROJECT_ENV_FILE=.env.app200 scripts/export_apps.sh
+APEX_APP_ID=100,200
+PROJECT_ENV_FILE=.env.other scripts/export_apps.sh
 ```
 
 Add each extra configuration file to `.gitignore` alongside `.env`; they are
@@ -78,7 +79,7 @@ per-clone local state for the same reason `.env` is.
   SQLcl's APEXLANG export type (`apex export -exptype APEXLANG`), one
   directory per app, grouped by owning schema. One file per page under
   `pages/`. This is editable project source and is changed in place.
-  Directories are named by the numeric `APEX_APP_ID`, which never changes,
+  Directories are named by each numeric value in `APEX_APP_ID`, which does not change,
   rather than by the application alias, which SQLcl picks for the export and
   which can be renamed in APEX at any time. `scripts/export_apps.*` detects
   whatever directory SQLcl created and renames it to the id before staging.

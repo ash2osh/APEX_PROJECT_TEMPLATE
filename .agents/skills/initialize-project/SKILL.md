@@ -23,9 +23,11 @@ it, or interpolate its contents. Accept proposed defaults only from recognized
 literal `KEY=VALUE` lines with no duplicate keys. Summarize the current values
 and ask whether the user wants to replace the file before continuing.
 
-The legacy keys `DB_TARGET_SCHEMA`, `SQLCL_CONNECTION`, `DB_EXPECTED_USER`, and
-`DB_REQUIRED_ROLE` may be offered as defaults for all three profiles, but never
-silently migrate them and never write them to the new file.
+The legacy keys `DB_TARGET_SCHEMA`, `SQLCL_CONNECTION`, and `DB_EXPECTED_USER`
+may be offered as defaults for all three profiles, but never silently migrate
+them and never write them to the new file. `DB_REQUIRED_ROLE`,
+`TABLES_REQUIRED_ROLE`, `CODE_REQUIRED_ROLE`, and `APEX_REQUIRED_ROLE` are
+obsolete unsupported settings; point them out and do not copy them forward.
 
 `APEX_APP_SLUG` is also a legacy key. An existing `.env` that still sets it
 will now be rejected by the loaders as an unsupported setting. Point this out,
@@ -42,23 +44,24 @@ Collect values in this order:
 
 1. Project name, using the command argument as the default when present.
 2. Environment: `development`, `test`, `staging`, or `production`.
-3. Positive numeric APEX application ID. There is no separate directory name
-   to collect: the export mirror is named by this id.
-4. Tables schema, SQLcl saved-connection name, and expected session user. Ask
-   for a role only if the user wants to record one; otherwise write `NONE`.
-5. Code schema, then whether its connection/account/role should reuse the
-   tables values. Ask for independent values when it should not.
-6. APEX parsing schema, then whether its connection/account/role should reuse
-   the code or tables values. Ask for independent values when it should not.
+3. One or more positive numeric APEX application IDs as strict CSV. There is
+   no separate directory name to collect: each export mirror is named by its id.
+4. Tables schema, object-name prefixes, SQLcl saved-connection name, and
+   expected session user.
+5. Code schema and prefixes, then whether its connection/account should reuse
+   the tables values. Ask for independent values when it should not.
+6. APEX parsing schema, then whether its connection/account should reuse the
+   code or tables values. Ask for independent values when it should not.
 7. Whether to install optional `uc-apx`; if yes, choose `universal` (default) or
    `claude-code` as its skill target.
 
-Schemas, users, and roles are uppercase Oracle identifiers matching
+Schemas and users are uppercase Oracle identifiers matching
 `[A-Z][A-Z0-9_$#]{0,127}`. Saved-connection names match
-`[A-Za-z0-9][A-Za-z0-9._-]*`. The application id matches `[1-9][0-9]*`.
-Project names must be one line. `*_REQUIRED_ROLE` is declarative only — nothing
-verifies it — so `NONE` is valid in every environment, including production.
-Only ask for a role name when the user volunteers one.
+`[A-Za-z0-9][A-Za-z0-9._-]*`. Application IDs match strict CSV of
+`[1-9][0-9]*`; prefixes match strict CSV of uppercase Oracle identifier
+prefixes, or `*` alone for all supported objects. CSV values have no spaces,
+blank entries, or duplicates, and `*` cannot be combined with prefixes.
+Project names must be one line.
 
 When the environment is `production`, state the read-only rule plainly and
 confirm the user accepts it: SELECT statements only, no DML, no DDL, no
@@ -80,22 +83,21 @@ this order:
 ```dotenv
 PROJECT_NAME=<project-name>
 DB_ENVIRONMENT=<environment>
-APEX_APP_ID=<positive-id>
+APEX_APP_ID=<positive-id-csv>
 
 TABLES_SCHEMA=<schema>
+TABLES_PREFIXES=<prefix-csv-or-*>
 TABLES_SQLCL_CONNECTION=<saved-connection>
 TABLES_EXPECTED_USER=<session-user>
-TABLES_REQUIRED_ROLE=<role-or-NONE>
 
 CODE_SCHEMA=<schema>
+CODE_PREFIXES=<prefix-csv-or-*>
 CODE_SQLCL_CONNECTION=<saved-connection>
 CODE_EXPECTED_USER=<session-user>
-CODE_REQUIRED_ROLE=<role-or-NONE>
 
 APEX_PARSING_SCHEMA=<schema>
 APEX_SQLCL_CONNECTION=<saved-connection>
 APEX_EXPECTED_USER=<session-user>
-APEX_REQUIRED_ROLE=<role-or-NONE>
 
 INSTALL_UC_APX=<true-or-false>
 UC_APX_SKILLS_AGENT=<universal-or-claude-code>

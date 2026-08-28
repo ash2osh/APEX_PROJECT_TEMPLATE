@@ -114,3 +114,16 @@ Add lessons below only when the evidence supports them.
   case collisions before adding a file whose name resembles an existing one.
 - Verification: `scripts/test_template.sh` reads the production instruction
   from `AGENTS.md`; `scripts/check_local_links.py` resolves every local link.
+
+### Use case-sensitive PowerShell regex operators for uppercase contracts
+
+- Trigger: validating `.env` setting names, Oracle identifiers, and object
+  prefixes that must be uppercase.
+- Evidence: PowerShell's `-match` and `-notmatch` operators are case-insensitive
+  by default, so the loader accepted lowercase keys, schemas, users, and
+  prefixes while the Bash loader rejected them.
+- Preferred behavior: use `-cmatch` or `-cnotmatch` whenever letter case is part
+  of a cross-platform input contract; keep case-insensitive matching explicit
+  only where both cases are intentionally allowed.
+- Verification: `scripts/test_template.ps1` and `scripts/test_template.sh`
+  reject lowercase setting names, Oracle identifiers, and prefixes.

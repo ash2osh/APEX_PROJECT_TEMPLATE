@@ -25,24 +25,23 @@ When `DB_ENVIRONMENT=production`:
 DB_ENVIRONMENT=production
 
 TABLES_SCHEMA=APP_DATA
+TABLES_PREFIXES=APP_,COMMON_
 TABLES_EXPECTED_USER=APP_DATA
-TABLES_REQUIRED_ROLE=NONE
 TABLES_SQLCL_CONNECTION=primary-prod-APP_DATA
 
 CODE_SCHEMA=APP_CODE
+CODE_PREFIXES=APP_,COMMON_
 CODE_EXPECTED_USER=APP_CODE
-CODE_REQUIRED_ROLE=NONE
 CODE_SQLCL_CONNECTION=primary-prod-APP_CODE
 
 APEX_PARSING_SCHEMA=APP
 APEX_EXPECTED_USER=APP
-APEX_REQUIRED_ROLE=NONE
 APEX_SQLCL_CONNECTION=primary-prod-APP
 ```
 
-`*_REQUIRED_ROLE` is now declarative only. Nothing verifies it; it is printed
-in the production banner so the operator can see what the connection is meant
-to be using. `NONE` is valid in every environment.
+The obsolete `TABLES_REQUIRED_ROLE`, `CODE_REQUIRED_ROLE`, and
+`APEX_REQUIRED_ROLE` settings are unsupported. Expected-user values are
+post-connect `SESSION_USER` assertions, not privilege or role declarations.
 
 Using a dedicated read-only database account is still the strongest thing you
 can do, and it is entirely compatible with this template — the difference is
