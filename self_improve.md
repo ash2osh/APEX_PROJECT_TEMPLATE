@@ -1,11 +1,11 @@
 # Self-Improvement Notes
 
 This file is the durable learning log for this project. It supplements
-`agents.md`; it does not override direct user, system, or project instructions.
+`AGENTS.md`; it does not override direct user, system, or project instructions.
 
 ## At the Start of Work
 
-1. Read `agents.md` and this file before making a non-trivial change.
+1. Read `AGENTS.md` and this file before making a non-trivial change.
 2. Inspect the current Git status and recent history so stale snapshots,
    generated output, or earlier assumptions are not mistaken for current
    behavior.
@@ -39,7 +39,7 @@ database investigation exposes a recurring risk:
   workflow implication.
 - Speculation, unverified diagnoses, generic programming advice, or large
   command outputs.
-- Task-by-task status logs or rules already stated authoritatively in `agents.md`.
+- Task-by-task status logs or rules already stated authoritatively in `AGENTS.md`.
 
 ## Durable Lessons
 

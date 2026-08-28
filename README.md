@@ -27,7 +27,7 @@ targeting guards, and a portable agent instruction set.
 | **Self-checking template** | `scripts/test_template.sh` / `.ps1` exercise the guards, the loader's injection resistance, mirror replacement failure paths, and export/backup orchestration against a fake SQLcl. CI runs them on Linux and Windows. |
 | **Optional tooling** | `uc-apx` (opt-in via `INSTALL_UC_APX`) and `graphify` knowledge graphs. Both are genuinely optional; nothing breaks when they're absent. |
 
-Details for each are in `agents.md`; production specifics are in
+Details for each are in `AGENTS.md`; production specifics are in
 [production database safety](docs/production-database-safety.md).
 
 ## Prerequisites
@@ -80,7 +80,7 @@ never installed.
    “initialize this project.”
 3. Alternatively, copy `.env.example` to `.env` and set every value manually.
    `.env` is ignored and must not contain credentials.
-4. Fill in `agents.md` §6 (Schema Ownership) with how this project actually
+4. Fill in `AGENTS.md` §6 (Schema Ownership) with how this project actually
    splits schemas.
 5. Create the exact SQLcl saved connections named by
    `TABLES_SQLCL_CONNECTION`, `CODE_SQLCL_CONNECTION`, and
@@ -181,8 +181,8 @@ small `install-uc-apx` opt-in skill, `sqlcl-mcp-r0`, and the vendored
 [skills index](.agents/skills/SKILLS.md) describes them. `superpowers/` is a
 vendored, local copy of the [superpowers](https://github.com/obra/superpowers)
 workflow skill library (brainstorming, writing-plans, TDD, code review, etc.
-— see `agents.md` §9) so those skills are available on any machine or agent
+— see `AGENTS.md` §9) so those skills are available on any machine or agent
 client, whether or not the superpowers plugin itself is installed.
 
-See `agents.md` for the full set of repository conventions, and `AGENTS.md`
-for the read order any coding agent should follow at the start of a task.
+See `AGENTS.md` for the read order any coding agent should follow at the
+start of a task, and for the full set of repository conventions.

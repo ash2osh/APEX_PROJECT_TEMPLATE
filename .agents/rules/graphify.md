@@ -6,7 +6,7 @@ description: Consult the graphify knowledge graph at graphify-out/ for codebase 
 ## graphify
 
 This project can use a graphify knowledge graph at graphify-out/, if the
-`graphify` CLI is installed (https://github.com/ash2osh — see `agents.md`
+`graphify` CLI is installed (https://github.com/ash2osh — see `AGENTS.md`
 "Optional Tooling"). It is not guaranteed to be present; if `graphify-out/`
 does not exist, none of the rules below apply — fall back to normal
 file reads and grep.

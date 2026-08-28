@@ -249,7 +249,7 @@ grep -q 'SELECT statements only' "$REPO_ROOT/scripts/verify_db_access.sql" \
   || fail "post-connect production instruction is missing"
 test ! -e "$REPO_ROOT/scripts/audit_production_access.sql" \
   || fail "the removed privilege audit script is back"
-for RULE_FILE in "$REPO_ROOT/.agents/rules/agent-safety.md" "$REPO_ROOT/agents.md"; do
+for RULE_FILE in "$REPO_ROOT/.agents/rules/agent-safety.md" "$REPO_ROOT/AGENTS.md"; do
   grep -q 'SELECT statements only' "$RULE_FILE" \
     || fail "production read-only instruction is missing from $RULE_FILE"
 done

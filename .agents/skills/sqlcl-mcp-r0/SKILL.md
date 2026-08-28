@@ -69,7 +69,7 @@ Stop on an unexpected connection, schema, path, branch, remote, HTTP response, s
 
 ## Self-improvement loop
 
-Read the project’s [`AGENTS.md`](../../../AGENTS.md), [`agents.md`](../../../agents.md), [`self_improve.md`](../../../self_improve.md), [shared safety rules](../../../.agents/rules/agent-safety.md), and relevant application context before non-trivial SQLcl work. These instructions supplement, but never override, user, system, or project rules.
+Read the project’s [`AGENTS.md`](../../../AGENTS.md), [`self_improve.md`](../../../self_improve.md), [shared safety rules](../../../.agents/rules/agent-safety.md), and relevant application context before non-trivial SQLcl work. These instructions supplement, but never override, user, system, or project rules.
 
 When a correction, failed deployment, wrong connection, hidden script action, compiler error, or repeated workflow failure reveals a durable risk:
 

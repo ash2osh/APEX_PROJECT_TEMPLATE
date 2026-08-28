@@ -9,7 +9,7 @@ Apply these gates in every repository workflow, regardless of client or model.
 
 ## Before non-trivial work
 
-- Read `AGENTS.md`, `agents.md`, `self_improve.md`, and relevant application context.
+- Read `AGENTS.md`, `self_improve.md`, and relevant application context.
 - Run `git status --short --branch` and preserve unrelated user changes.
 - Classify the requested action as read-only, reversible, destructive,
   secret-bearing, or externally visible.

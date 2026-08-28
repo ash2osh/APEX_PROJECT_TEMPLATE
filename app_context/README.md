@@ -19,7 +19,7 @@ app_context/<app-id>/
                         # complex enough to need its own notes
   2-database/           # optional — data-model notes specific to this app
   3-tests/               # optional — test walkthroughs/scenarios specific
-                          # to this app (see agents.md #8 Testing Convention)
+                          # to this app (see AGENTS.md #8 Testing Convention)
 ```
 
 Create the folder the first time you do non-trivial work on an app; it
