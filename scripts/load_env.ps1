@@ -51,7 +51,8 @@ $projectEnvRequired = @(
   "INSTALL_UC_APX", "UC_APX_SKILLS_AGENT"
 )
 foreach ($projectEnvKey in $projectEnvRequired) {
-  if (-not $projectEnvSeen.ContainsKey($projectEnvKey) -or [string]::IsNullOrWhiteSpace((Get-Item -LiteralPath "Env:$projectEnvKey").Value)) {
+  if (-not $projectEnvSeen.ContainsKey($projectEnvKey) -or
+      [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($projectEnvKey, "Process"))) {
     throw "project environment error: $projectEnvKey is required in $EnvFile"
   }
 }
@@ -70,7 +71,7 @@ if ($env:APEX_APP_ID -notmatch '^[1-9][0-9]*(,[1-9][0-9]*)*$') {
 }
 Assert-ProjectEnvUniqueCsv -Name "APEX_APP_ID" -Value $env:APEX_APP_ID
 foreach ($projectEnvKey in @("TABLES_PREFIXES", "CODE_PREFIXES")) {
-  $projectEnvPrefixValue = (Get-Item -LiteralPath "Env:$projectEnvKey").Value
+  $projectEnvPrefixValue = [Environment]::GetEnvironmentVariable($projectEnvKey, "Process")
   if ($projectEnvPrefixValue -eq "*") { continue }
   if ($projectEnvPrefixValue -cnotmatch '^[A-Z][A-Z0-9_$#]*(,[A-Z][A-Z0-9_$#]*)*$') {
     throw "$projectEnvKey must be * or a comma-separated list of uppercase Oracle identifier prefixes without spaces"
@@ -86,12 +87,12 @@ if ($env:DB_ENVIRONMENT -notin @("development", "test", "staging", "production")
 if ($env:INSTALL_UC_APX -notin @("true", "false")) { throw "INSTALL_UC_APX must be true or false" }
 if ($env:UC_APX_SKILLS_AGENT -notin @("universal", "claude-code")) { throw "UC_APX_SKILLS_AGENT is invalid" }
 foreach ($projectEnvKey in @("TABLES_SCHEMA", "TABLES_EXPECTED_USER", "CODE_SCHEMA", "CODE_EXPECTED_USER", "APEX_PARSING_SCHEMA", "APEX_EXPECTED_USER")) {
-  if ((Get-Item -LiteralPath "Env:$projectEnvKey").Value -cnotmatch '^[A-Z][A-Z0-9_$#]{0,127}$') {
+  if ([Environment]::GetEnvironmentVariable($projectEnvKey, "Process") -cnotmatch '^[A-Z][A-Z0-9_$#]{0,127}$') {
     throw "$projectEnvKey must be an uppercase Oracle identifier"
   }
 }
 foreach ($projectEnvKey in @("TABLES_SQLCL_CONNECTION", "CODE_SQLCL_CONNECTION", "APEX_SQLCL_CONNECTION")) {
-  if ((Get-Item -LiteralPath "Env:$projectEnvKey").Value -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
+  if ([Environment]::GetEnvironmentVariable($projectEnvKey, "Process") -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
     throw "$projectEnvKey contains unsupported characters"
   }
 }

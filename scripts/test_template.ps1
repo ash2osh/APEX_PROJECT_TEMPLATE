@@ -57,7 +57,18 @@ INSTALL_UC_APX=false
 UC_APX_SKILLS_AGENT=universal
 '@
   [System.IO.File]::WriteAllText($baseEnvFile, $envText)
-  . (Join-Path $PSScriptRoot "load_env.ps1") -EnvFile $baseEnvFile
+  function Get-Item {
+    param([string]$LiteralPath)
+    if ($LiteralPath.StartsWith("Env:")) {
+      throw "simulated Windows PowerShell environment-provider collision"
+    }
+    Microsoft.PowerShell.Management\Get-Item -LiteralPath $LiteralPath
+  }
+  try {
+    . (Join-Path $PSScriptRoot "load_env.ps1") -EnvFile $baseEnvFile
+  } finally {
+    Microsoft.PowerShell.Management\Remove-Item -LiteralPath Function:Get-Item
+  }
   Assert-True ($env:PROJECT_NAME -eq '$(throw should-not-run)') ".env literal value was changed or executed"
 
   Assert-True ($env:APEX_APP_ID -eq "100,200") "PowerShell loader changed the application id list"

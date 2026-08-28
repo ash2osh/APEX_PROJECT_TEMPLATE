@@ -103,6 +103,19 @@ Add lessons below only when the evidence supports them.
   incomplete cases with both LF and CRLF manifests, plus a manifest with no
   readable counts.
 
+### Avoid dynamic reads through the Windows PowerShell environment provider
+
+- Trigger: the native Windows PowerShell 5.1 suite ran in a process whose
+  environment block contained both `Path` and `PATH`.
+- Evidence: `Get-Item Env:PROJECT_NAME` threw `An item with the same key has
+  already been added`, even though `PROJECT_NAME` itself was unique; the .NET
+  process environment API returned the value normally.
+- Preferred behavior: use `[Environment]::GetEnvironmentVariable(...,
+  "Process")` for dynamic environment-variable reads in PowerShell loaders.
+- Verification: `scripts/test_template.ps1` shadows environment-provider
+  `Get-Item` reads with the observed failure and confirms the real loader still
+  loads and validates the file under PowerShell 7 and Windows PowerShell 5.1.
+
 ### Do not add a second file whose name differs only in case
 
 - Trigger: `AGENTS.md` (entry point) and `agents.md` (full conventions) were
