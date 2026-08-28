@@ -16,6 +16,10 @@ SET TRIMSPOOL ON
 SET FEEDBACK OFF
 SET ECHO OFF
 SET VERIFY OFF
+-- SQLcl enables the DDL 'insert' transform by default, which makes
+-- DBMS_METADATA append an INSERT /*+ APPEND */ ... KU$ data-movement
+-- statement to every table. This mirror is metadata only.
+SET DDL INSERT OFF
 WHENEVER SQLERROR EXIT SQL.SQLCODE
 WHENEVER OSERROR EXIT FAILURE
 
@@ -62,9 +66,14 @@ BEGIN
 END;
 /
 
+-- SQLcl cannot SPOOL to a file whose name contains '$' (SP2-0332), and the
+-- failure does not stop the script, so such an object would silently vanish
+-- from the mirror. Encode '$' as '-S-' in the *filename* only; '-' cannot
+-- appear in an Oracle identifier, so the encoding cannot collide. The object
+-- name inside the generated DDL is untouched.
 SPOOL scripts/_backup_db_driver_&&object_scope..sql
 
-SELECT 'SPOOL database/&&target_schema/tables/' || table_name || '.sql'
+SELECT 'SPOOL database/&&target_schema/tables/' || REPLACE(table_name, '$', '-S-') || '.sql'
        || CHR(10) || 'SELECT DBMS_METADATA.GET_DDL(''TABLE'', ''' || table_name
        || ''', ''&&target_schema'') FROM DUAL;'
        || CHR(10) || 'SPOOL OFF'
@@ -73,7 +82,7 @@ WHERE LOWER('&&object_scope') = 'tables'
   AND owner = UPPER('&&target_schema')
 ORDER BY table_name;
 
-SELECT 'SPOOL database/&&target_schema/views/' || view_name || '.sql'
+SELECT 'SPOOL database/&&target_schema/views/' || REPLACE(view_name, '$', '-S-') || '.sql'
        || CHR(10) || 'SELECT DBMS_METADATA.GET_DDL(''VIEW'', ''' || view_name
        || ''', ''&&target_schema'') FROM DUAL;'
        || CHR(10) || 'SPOOL OFF'
@@ -82,7 +91,7 @@ WHERE LOWER('&&object_scope') = 'code'
   AND owner = UPPER('&&target_schema')
 ORDER BY view_name;
 
-SELECT 'SPOOL database/&&target_schema/packages/' || object_name || '_SPEC.sql'
+SELECT 'SPOOL database/&&target_schema/packages/' || REPLACE(object_name, '$', '-S-') || '_SPEC.sql'
        || CHR(10) || 'SELECT DBMS_METADATA.GET_DDL(''PACKAGE_SPEC'', ''' || object_name
        || ''', ''&&target_schema'') FROM DUAL;'
        || CHR(10) || 'SPOOL OFF'
@@ -92,7 +101,7 @@ WHERE LOWER('&&object_scope') = 'code'
   AND object_type = 'PACKAGE'
 ORDER BY object_name;
 
-SELECT 'SPOOL database/&&target_schema/packages/' || object_name || '_BODY.sql'
+SELECT 'SPOOL database/&&target_schema/packages/' || REPLACE(object_name, '$', '-S-') || '_BODY.sql'
        || CHR(10) || 'SELECT DBMS_METADATA.GET_DDL(''PACKAGE_BODY'', ''' || object_name
        || ''', ''&&target_schema'') FROM DUAL;'
        || CHR(10) || 'SPOOL OFF'
@@ -102,7 +111,7 @@ WHERE LOWER('&&object_scope') = 'code'
   AND object_type = 'PACKAGE BODY'
 ORDER BY object_name;
 
-SELECT 'SPOOL database/&&target_schema/procedures/' || object_name || '.sql'
+SELECT 'SPOOL database/&&target_schema/procedures/' || REPLACE(object_name, '$', '-S-') || '.sql'
        || CHR(10) || 'SELECT DBMS_METADATA.GET_DDL(''PROCEDURE'', ''' || object_name
        || ''', ''&&target_schema'') FROM DUAL;'
        || CHR(10) || 'SPOOL OFF'
@@ -112,7 +121,7 @@ WHERE LOWER('&&object_scope') = 'code'
   AND object_type = 'PROCEDURE'
 ORDER BY object_name;
 
-SELECT 'SPOOL database/&&target_schema/functions/' || object_name || '.sql'
+SELECT 'SPOOL database/&&target_schema/functions/' || REPLACE(object_name, '$', '-S-') || '.sql'
        || CHR(10) || 'SELECT DBMS_METADATA.GET_DDL(''FUNCTION'', ''' || object_name
        || ''', ''&&target_schema'') FROM DUAL;'
        || CHR(10) || 'SPOOL OFF'
@@ -122,7 +131,7 @@ WHERE LOWER('&&object_scope') = 'code'
   AND object_type = 'FUNCTION'
 ORDER BY object_name;
 
-SELECT 'SPOOL database/&&target_schema/triggers/' || object_name || '.sql'
+SELECT 'SPOOL database/&&target_schema/triggers/' || REPLACE(object_name, '$', '-S-') || '.sql'
        || CHR(10) || 'SELECT DBMS_METADATA.GET_DDL(''TRIGGER'', ''' || object_name
        || ''', ''&&target_schema'') FROM DUAL;'
        || CHR(10) || 'SPOOL OFF'

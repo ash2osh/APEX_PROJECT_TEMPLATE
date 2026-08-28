@@ -61,7 +61,11 @@ per-clone local state for the same reason `.env` is.
   mirror** — never hand-edited. It covers tables, views, packages, standalone
   procedures/functions, and triggers only; sequences, types, synonyms,
   materialized views, standalone indexes, and scheduler jobs are not
-  exported, and the manifests count only the exported types.
+  exported, and the manifests count only the exported types. A `$` in an
+  object name becomes `-S-` in its filename, because SQLcl cannot spool to a
+  path containing `$`; the DDL inside the file keeps the real name. The
+  backup refuses to install a mirror whose file count disagrees with the
+  manifest counts.
 - `app_context/<app-id>/` — durable, per-app knowledge base
   (purpose, architecture notes, known patterns, known bugs/gotchas). Check
   it before touching an app, update it after resolving a non-trivial issue.

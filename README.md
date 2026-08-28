@@ -167,6 +167,14 @@ views, standalone indexes, and scheduler jobs are **not** exported, and the
 manifests count only the exported types — so a mirror can look complete while
 omitting those objects.
 
+SQLcl cannot spool to a path containing `$`, so an object name's `$` is
+encoded as `-S-` in its **filename only** (`DBTOOLS$MCP_LOG` becomes
+`DBTOOLS-S-MCP_LOG.sql`); `-` cannot appear in an Oracle identifier, so the
+encoding never collides. The object name inside the generated DDL is
+untouched. Every backup also checks that the number of files it wrote matches
+the manifest counts and refuses to install the mirror otherwise, so a silently
+failed export cannot land as a plausible-looking snapshot.
+
 `.agents/skills/` contains the interactive `initialize-project` skill, the
 small `install-uc-apx` opt-in skill, `sqlcl-mcp-r0`, and the vendored
 `superpowers/` workflow skills. The

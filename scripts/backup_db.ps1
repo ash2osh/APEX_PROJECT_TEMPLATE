@@ -6,6 +6,45 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 & (Join-Path $PSScriptRoot "check_db_target.ps1") -Operation read -Target tables
 & (Join-Path $PSScriptRoot "check_db_target.ps1") -Operation read -Target code
 
+# A failed SPOOL inside the generated driver prints an SP2- message that does
+# not stop SQLcl, so an object can go missing without any non-zero exit code.
+# The manifest states how many objects each scope should have produced; refuse
+# to install a mirror that does not have exactly that many files.
+function Test-ScopeComplete {
+  param(
+    [string] $Scope,
+    [string] $Schema,
+    [string] $StagingPath
+  )
+  $manifestPath = Join-Path $StagingPath "database/$Schema/manifest-$Scope.txt"
+  $expected = 0
+  foreach ($line in (Get-Content -LiteralPath $manifestPath)) {
+    $separator = $line.LastIndexOf('=')
+    if ($separator -lt 0) { continue }
+    $count = $line.Substring($separator + 1).Trim()
+    $parsed = 0
+    if ([int]::TryParse($count, [ref] $parsed)) { $expected += $parsed }
+  }
+
+  if ($Scope -eq 'tables') {
+    $scopeDirs = @('tables')
+  } else {
+    $scopeDirs = @('views', 'packages', 'procedures', 'functions', 'triggers')
+  }
+  $actual = 0
+  foreach ($scopeDir in $scopeDirs) {
+    $scopePath = Join-Path $StagingPath "database/$Schema/$scopeDir"
+    if (Test-Path -LiteralPath $scopePath) {
+      $actual += @(Get-ChildItem -LiteralPath $scopePath -File -Filter *.sql).Count
+    }
+  }
+
+  if ($expected -ne $actual) {
+    throw ("database backup is incomplete for $Schema ($Scope): manifest expects " +
+      "$expected object file(s) but $actual were written; the mirror was not replaced")
+  }
+}
+
 $backupTargets = @(
   [PSCustomObject]@{
     Scope = "tables"
@@ -65,6 +104,7 @@ try {
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
       throw "database backup did not create manifest-$($target.Scope).txt under database/$($target.Schema)"
     }
+    Test-ScopeComplete -Scope $target.Scope -Schema $target.Schema -StagingPath $stagingPath
   }
 
   Pop-Location

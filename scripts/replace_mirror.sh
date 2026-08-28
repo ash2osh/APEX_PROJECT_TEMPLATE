@@ -64,6 +64,13 @@ if [ -n "$FIRST_STAGED_LINK" ]; then
   exit 1
 fi
 
+# Create the destination parent before the first Git query. With apps/ present
+# but apps/<schema>/ still absent -- every project's first APEX export -- a
+# `git status -- apps/<schema>/<app-id>` prints a "could not open directory"
+# warning that reads like an export failure.
+DEST_PARENT="$(dirname -- "$DEST_DIR")"
+mkdir -p "$DEST_PARENT"
+
 check_clean_mirror() {
   if ! DIRTY_STATUS="$(git -C "$REPO_ROOT" status --porcelain --untracked-files=all -- "$DEST_REL")"; then
     echo "unable to inspect Git status for mirror: $DEST_REL" >&2
@@ -77,8 +84,6 @@ check_clean_mirror() {
 }
 check_clean_mirror
 
-DEST_PARENT="$(dirname -- "$DEST_DIR")"
-mkdir -p "$DEST_PARENT"
 DEST_PARENT="$(cd "$DEST_PARENT" && pwd -P)"
 DEST_DIR="$DEST_PARENT/$(basename -- "$DEST_DIR")"
 case "$DEST_DIR" in

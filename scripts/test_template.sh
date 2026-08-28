@@ -286,6 +286,19 @@ grep -q "DBMS_METADATA.GET_DDL(''TRIGGER''" "$REPO_ROOT/scripts/backup_db.sql" |
 grep -q "DEFINE object_scope = '&2'" "$REPO_ROOT/scripts/backup_db.sql" || fail "database backup scope argument is missing"
 grep -q 'manifest-tables.txt' "$REPO_ROOT/scripts/backup_db.sql" || fail "tables manifest is missing"
 grep -q 'manifest-code.txt' "$REPO_ROOT/scripts/backup_db.sql" || fail "code manifest is missing"
+# SQLcl turns the DDL 'insert' transform on by default, which appends an
+# INSERT ... KU$ data-movement statement to every table's DDL.
+grep -q '^SET DDL INSERT OFF$' "$REPO_ROOT/scripts/backup_db.sql" \
+  || fail "backup_db.sql no longer disables the SQLcl DDL insert transform"
+# SQLcl cannot SPOOL to a path containing '$' (SP2-0332) and does not stop on
+# the failure, so object names must be encoded in the generated filenames.
+test "$(grep -c "REPLACE(\(table_name\|view_name\|object_name\), '\$', '-S-')" \
+  "$REPO_ROOT/scripts/backup_db.sql")" = 7 \
+  || fail "backup_db.sql does not encode '\$' in all seven generated filenames"
+grep -q 'verify_scope_complete' "$REPO_ROOT/scripts/backup_db.sh" \
+  || fail "backup_db.sh no longer verifies scope completeness against the manifest"
+grep -q 'Test-ScopeComplete' "$REPO_ROOT/scripts/backup_db.ps1" \
+  || fail "backup_db.ps1 no longer verifies scope completeness against the manifest"
 grep -q 'check_db_target.sh" read tables' "$REPO_ROOT/scripts/backup_db.sh" || fail "database backup does not guard the tables target"
 grep -q 'check_db_target.sh" read code' "$REPO_ROOT/scripts/backup_db.sh" || fail "database backup does not guard the code target"
 grep -q 'APEX_SQLCL_CONNECTION' "$REPO_ROOT/scripts/export_apps.sh" || fail "APEX export does not use the APEX connection profile"

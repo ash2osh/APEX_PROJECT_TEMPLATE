@@ -49,6 +49,13 @@ if ($null -ne $stagedLink) {
   throw "staging directory contains a symbolic link or junction: $($stagedLink.FullName)"
 }
 
+# Create the destination parent before the first Git query. With apps/ present
+# but apps/<schema>/ still absent -- every project's first APEX export -- a
+# `git status -- apps/<schema>/<app-id>` prints a "could not open directory"
+# warning that reads like an export failure.
+$destinationParent = Split-Path -Parent $destinationPath
+New-Item -ItemType Directory -Force -Path $destinationParent | Out-Null
+
 $dirty = @(git -C $repoRoot status --porcelain --untracked-files=all -- $destinationPath)
 $gitExitCode = $LASTEXITCODE
 if ($gitExitCode -ne 0) {
@@ -58,8 +65,6 @@ if (-not [string]::IsNullOrWhiteSpace(($dirty -join "`n"))) {
   throw "refusing to replace dirty mirror: $Destination"
 }
 
-$destinationParent = Split-Path -Parent $destinationPath
-New-Item -ItemType Directory -Force -Path $destinationParent | Out-Null
 $resolvedDestinationParent = (Resolve-Path -LiteralPath $destinationParent).Path
 $destinationPath = Join-Path $resolvedDestinationParent (Split-Path -Leaf $destinationPath)
 if (-not $destinationPath.StartsWith($repoRoot + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {

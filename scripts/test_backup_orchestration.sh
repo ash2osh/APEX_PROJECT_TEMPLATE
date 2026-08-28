@@ -37,12 +37,19 @@ done
 
 printf '%s:%s:%s\n' "$scope" "$schema" "$connection" >> "$FAKE_SQL_LOG"
 mkdir -p "database/$schema/tables" "database/$schema/views"
-printf '%s\n' "$scope" > "database/$schema/manifest-$scope.txt"
 if [ "$scope" = tables ]; then
   printf 'table metadata\n' > "database/$schema/tables/T_SAMPLE.sql"
+  # A spool failure loses the file but never the manifest count.
+  if [ "${FAKE_DROP_ONE_FILE:-false}" != true ]; then
+    printf 'table metadata\n' > "database/$schema/tables/T_SECOND.sql"
+  fi
+  printf 'TABLE=2\n' > "database/$schema/manifest-$scope.txt"
 else
   printf 'view metadata\n' > "database/$schema/views/V_SAMPLE.sql"
+  printf 'VIEW=1\nPACKAGE=0\nPACKAGE BODY=0\nPROCEDURE=0\nFUNCTION=0\nTRIGGER=0\n' \
+    > "database/$schema/manifest-$scope.txt"
 fi
+printf '%s\n' "$scope" > "database/$schema/manifest-$scope-scope.txt"
 EOF
 chmod +x "$FAKE_SQL"
 
@@ -103,6 +110,8 @@ run_case() {
   sed -n '2p' "$sql_log" | grep -q "^code:$code_schema:" || fail "$case_name did not run code second"
   test -f "$TEST_REPO/database/$tables_schema/manifest-tables.txt" || fail "$case_name lost the tables manifest"
   test -f "$TEST_REPO/database/$code_schema/manifest-code.txt" || fail "$case_name lost the code manifest"
+  grep -q '^TABLE=2$' "$TEST_REPO/database/$tables_schema/manifest-tables.txt" \
+    || fail "$case_name lost the tables manifest counts"
   test ! -e "$TEST_REPO/database/$tables_schema/old.txt" || fail "$case_name retained stale table mirror content"
   test ! -e "$TEST_REPO/database/$code_schema/old.txt" || fail "$case_name retained stale code mirror content"
 }
@@ -114,5 +123,33 @@ git -C "$TEST_REPO" -c user.name=TemplateTest -c user.email=test@example.invalid
   commit -qm "record same-schema refresh"
 
 run_case split-schema DATA CODE
+
+# A scope that writes fewer object files than its manifest counts is refused,
+# and the previous mirror survives untouched.
+git -C "$TEST_REPO" add database
+git -C "$TEST_REPO" -c user.name=TemplateTest -c user.email=test@example.invalid \
+  commit -qm "record split-schema refresh"
+
+for schema in DATA CODE; do
+  printf 'old mirror\n' > "$TEST_REPO/database/$schema/old.txt"
+done
+git -C "$TEST_REPO" add database
+git -C "$TEST_REPO" -c user.name=TemplateTest -c user.email=test@example.invalid \
+  commit -qm "re-seed mirrors for the incomplete-backup case"
+
+incomplete_env="$TEST_ROOT/incomplete.env"
+write_env "$incomplete_env" DATA CODE
+if PATH="$TEST_ROOT/bin:$PATH" PROJECT_ENV_FILE="$incomplete_env" \
+  FAKE_REPO_ROOT="$TEST_REPO" FAKE_REQUIRED_DESTINATIONS="DATA,CODE" \
+  FAKE_SQL_LOG="$TEST_ROOT/incomplete.log" FAKE_DROP_ONE_FILE=true \
+  "$TEST_REPO/scripts/backup_db.sh" 2>"$TEST_ROOT/incomplete.err"; then
+  fail "backup installed a mirror with fewer files than the manifest counts"
+fi
+grep -q 'manifest expects' "$TEST_ROOT/incomplete.err" \
+  || fail "the incomplete backup failed for the wrong reason: $(cat "$TEST_ROOT/incomplete.err")"
+test -f "$TEST_REPO/database/DATA/tables/T_SECOND.sql" \
+  || fail "an incomplete backup damaged the previous mirror"
+test -z "$(git -C "$TEST_REPO" status --porcelain -- database)" \
+  || fail "an incomplete backup left the mirror dirty"
 
 echo "PASS: database backup two-pass orchestration"

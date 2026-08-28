@@ -46,6 +46,43 @@ for schema in "${BACKUP_SCHEMAS[@]}"; do
     "$db_stage/procedures" "$db_stage/functions" "$db_stage/triggers"
 done
 
+# A failed SPOOL inside the generated driver prints an SP2- message that does
+# not stop SQLcl, so an object can go missing without any non-zero exit code.
+# The manifest states how many objects each scope should have produced; refuse
+# to install a mirror that does not have exactly that many files.
+verify_scope_complete() {
+  local scope="$1"
+  local schema="$2"
+  local manifest="$STAGING_DIR/database/$schema/manifest-$scope.txt"
+  local expected=0
+  local line count
+  while IFS= read -r line || [ -n "$line" ]; do
+    count="${line##*=}"
+    [[ "$line" == *=* ]] || continue
+    [[ "$count" =~ ^[0-9]+$ ]] || continue
+    expected=$((expected + count))
+  done < "$manifest"
+
+  local scope_dirs
+  case "$scope" in
+    tables) scope_dirs="tables" ;;
+    code)   scope_dirs="views packages procedures functions triggers" ;;
+  esac
+  local actual=0
+  local scope_dir found
+  for scope_dir in $scope_dirs; do
+    found="$(find "$STAGING_DIR/database/$schema/$scope_dir" -maxdepth 1 -type f \
+      -name '*.sql' 2>/dev/null | wc -l)"
+    actual=$((actual + found))
+  done
+
+  if [ "$expected" -ne "$actual" ]; then
+    echo "database backup is incomplete for $schema ($scope): manifest expects" >&2
+    echo "$expected object file(s) but $actual were written; the mirror was not replaced" >&2
+    exit 1
+  fi
+}
+
 run_backup_scope() {
   local scope="$1"
   local schema="$2"
@@ -62,6 +99,7 @@ run_backup_scope() {
     echo "database backup did not create manifest-$scope.txt under database/$schema" >&2
     exit 1
   }
+  verify_scope_complete "$scope" "$schema"
 }
 
 # Both exports and manifests must complete before any generated mirror changes.
