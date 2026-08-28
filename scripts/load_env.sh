@@ -27,9 +27,9 @@ while IFS= read -r project_env_line || [ -n "$project_env_line" ]; do
   project_env_value="${BASH_REMATCH[2]}"
   case "$project_env_key" in
     PROJECT_NAME|DB_ENVIRONMENT|APEX_APP_ID|\
-    TABLES_SCHEMA|TABLES_SQLCL_CONNECTION|TABLES_EXPECTED_USER|TABLES_REQUIRED_ROLE|\
-    CODE_SCHEMA|CODE_SQLCL_CONNECTION|CODE_EXPECTED_USER|CODE_REQUIRED_ROLE|\
-    APEX_PARSING_SCHEMA|APEX_SQLCL_CONNECTION|APEX_EXPECTED_USER|APEX_REQUIRED_ROLE|\
+    TABLES_SCHEMA|TABLES_PREFIXES|TABLES_SQLCL_CONNECTION|TABLES_EXPECTED_USER|\
+    CODE_SCHEMA|CODE_PREFIXES|CODE_SQLCL_CONNECTION|CODE_EXPECTED_USER|\
+    APEX_PARSING_SCHEMA|APEX_SQLCL_CONNECTION|APEX_EXPECTED_USER|\
     INSTALL_UC_APX|UC_APX_SKILLS_AGENT) ;;
     *)
       project_env_fail "unsupported setting in $PROJECT_ENV_FILE: $project_env_key"
@@ -54,9 +54,9 @@ done < "$PROJECT_ENV_FILE"
 
 project_env_required=(
   PROJECT_NAME DB_ENVIRONMENT APEX_APP_ID
-  TABLES_SCHEMA TABLES_SQLCL_CONNECTION TABLES_EXPECTED_USER TABLES_REQUIRED_ROLE
-  CODE_SCHEMA CODE_SQLCL_CONNECTION CODE_EXPECTED_USER CODE_REQUIRED_ROLE
-  APEX_PARSING_SCHEMA APEX_SQLCL_CONNECTION APEX_EXPECTED_USER APEX_REQUIRED_ROLE
+  TABLES_SCHEMA TABLES_PREFIXES TABLES_SQLCL_CONNECTION TABLES_EXPECTED_USER
+  CODE_SCHEMA CODE_PREFIXES CODE_SQLCL_CONNECTION CODE_EXPECTED_USER
+  APEX_PARSING_SCHEMA APEX_SQLCL_CONNECTION APEX_EXPECTED_USER
   INSTALL_UC_APX UC_APX_SKILLS_AGENT
 )
 for project_env_key in "${project_env_required[@]}"; do
@@ -73,10 +73,52 @@ for project_env_key in "${project_env_required[@]}"; do
   fi
 done
 
-[[ "$APEX_APP_ID" =~ ^[1-9][0-9]*$ ]] || {
-  project_env_fail "APEX_APP_ID must be a positive integer"
+[[ "$APEX_APP_ID" =~ ^[1-9][0-9]*(,[1-9][0-9]*)*$ ]] || {
+  project_env_fail "APEX_APP_ID must be a comma-separated list of positive integers without spaces"
   return 1 2>/dev/null || exit 1
 }
+
+project_env_validate_unique_csv() {
+  local project_env_csv_key="$1"
+  local project_env_csv_value="$2"
+  local project_env_csv_item project_env_csv_seen_item
+  local project_env_csv_items=() project_env_csv_seen_items=()
+  IFS=',' read -r -a project_env_csv_items <<< "$project_env_csv_value"
+  for project_env_csv_item in "${project_env_csv_items[@]}"; do
+    for project_env_csv_seen_item in "${project_env_csv_seen_items[@]}"; do
+      if [ "$project_env_csv_item" = "$project_env_csv_seen_item" ]; then
+        project_env_fail "$project_env_csv_key must not contain duplicate values: $project_env_csv_item"
+        return 1
+      fi
+    done
+    project_env_csv_seen_items+=("$project_env_csv_item")
+  done
+}
+
+project_env_validate_unique_csv APEX_APP_ID "$APEX_APP_ID" || {
+  return 1 2>/dev/null || exit 1
+}
+
+for project_env_key in TABLES_PREFIXES CODE_PREFIXES; do
+  project_env_value="${!project_env_key}"
+  if [ "$project_env_value" = "*" ]; then
+    continue
+  fi
+  if [[ ! "$project_env_value" =~ ^[A-Z][A-Z0-9_$#]*(,[A-Z][A-Z0-9_$#]*)*$ ]]; then
+    project_env_fail "$project_env_key must be * or a comma-separated list of uppercase Oracle identifier prefixes without spaces"
+    return 1 2>/dev/null || exit 1
+  fi
+  project_env_validate_unique_csv "$project_env_key" "$project_env_value" || {
+    return 1 2>/dev/null || exit 1
+  }
+  IFS=',' read -r -a project_env_prefix_items <<< "$project_env_value"
+  for project_env_prefix_item in "${project_env_prefix_items[@]}"; do
+    if [ "${#project_env_prefix_item}" -gt 128 ]; then
+      project_env_fail "$project_env_key prefixes must be at most 128 characters"
+      return 1 2>/dev/null || exit 1
+    fi
+  done
+done
 case "$DB_ENVIRONMENT" in
   development|test|staging|production) ;;
   *)
@@ -111,12 +153,6 @@ for project_env_key in TABLES_SQLCL_CONNECTION CODE_SQLCL_CONNECTION APEX_SQLCL_
     return 1 2>/dev/null || exit 1
   fi
 done
-for project_env_key in TABLES_REQUIRED_ROLE CODE_REQUIRED_ROLE APEX_REQUIRED_ROLE; do
-  if [[ ! "${!project_env_key}" =~ ^[A-Z][A-Z0-9_$#]{0,127}$ ]]; then
-    project_env_fail "$project_env_key must be an uppercase Oracle role name or NONE"
-    return 1 2>/dev/null || exit 1
-  fi
-done
-
 unset project_env_line project_env_key project_env_value project_env_required
 unset project_env_seen_keys project_env_seen_key project_env_seen_present
+unset project_env_prefix_items project_env_prefix_item

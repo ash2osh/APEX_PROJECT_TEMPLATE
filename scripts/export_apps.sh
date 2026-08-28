@@ -6,13 +6,28 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 # shellcheck source=load_env.sh
 source "$REPO_ROOT/scripts/load_env.sh" "${PROJECT_ENV_FILE:-$REPO_ROOT/.env}"
 PROJECT_ENV_FILE="${PROJECT_ENV_FILE:-$REPO_ROOT/.env}" "$REPO_ROOT/scripts/check_db_target.sh" read apex
-DB_ROLE_ARG="$APEX_REQUIRED_ROLE"
+
+IFS=',' read -r -a APP_IDS <<< "$APEX_APP_ID"
+
+# Refuse any dirty destination before making the first database connection.
+for app_id in "${APP_IDS[@]}"; do
+  destination="apps/$APEX_PARSING_SCHEMA/$app_id"
+  dirty_status="$(git -C "$REPO_ROOT" status --porcelain --untracked-files=all -- "$destination")" || {
+    echo "unable to inspect Git status for mirror: $destination" >&2
+    exit 1
+  }
+  if [ -n "$dirty_status" ]; then
+    echo "refusing to export over dirty mirror: $destination" >&2
+    echo "commit, stash, or remove local changes first" >&2
+    exit 1
+  fi
+done
 
 mkdir -p "$REPO_ROOT/scratch"
 STAGING_DIR="$(mktemp -d "$REPO_ROOT/scratch/apex-export.XXXXXX")"
 cleanup() { rm -rf -- "$STAGING_DIR"; }
 trap cleanup EXIT
-STAGE_PARENT="$STAGING_DIR/apps/$APEX_PARSING_SCHEMA"
+STAGE_PARENT="$STAGING_DIR/staged/apps/$APEX_PARSING_SCHEMA"
 mkdir -p "$STAGE_PARENT"
 
 # SQLcl builds a JLine console over its standard input at startup. Handed a
@@ -24,46 +39,48 @@ mkdir -p "$STAGE_PARENT"
 SQLCL_STDIN="$STAGING_DIR/.sqlcl-stdin"
 : > "$SQLCL_STDIN"
 
-(
-  cd "$STAGING_DIR"
-  sql -S -noupdates -name "$APEX_SQLCL_CONNECTION" \
-    "@$REPO_ROOT/scripts/export_apps.sql" \
-    "$APEX_PARSING_SCHEMA" "$APEX_APP_ID" "$DB_ENVIRONMENT" \
-    "$APEX_EXPECTED_USER" "$DB_ROLE_ARG" < "$SQLCL_STDIN"
-)
+for app_id in "${APP_IDS[@]}"; do
+  RUN_DIR="$STAGING_DIR/runs/$app_id"
+  RUN_STAGE_PARENT="$RUN_DIR/apps/$APEX_PARSING_SCHEMA"
+  mkdir -p "$RUN_STAGE_PARENT"
 
-# SQLcl names the export directory after the application alias, which this
-# template does not control and which can be renamed in APEX at any time.
-# Detect what SQLcl actually created instead of predicting its name.
-EXPORTED_DIR=""
-EXPORTED_COUNT=0
-while IFS= read -r -d '' candidate; do
-  EXPORTED_DIR="$candidate"
-  EXPORTED_COUNT=$((EXPORTED_COUNT + 1))
-done < <(find "$STAGE_PARENT" -mindepth 1 -maxdepth 1 -type d -print0)
+  (
+    cd "$RUN_DIR"
+    sql -S -noupdates -name "$APEX_SQLCL_CONNECTION" \
+      "@$REPO_ROOT/scripts/export_apps.sql" \
+      "$APEX_PARSING_SCHEMA" "$app_id" "$DB_ENVIRONMENT" \
+      "$APEX_EXPECTED_USER" < "$SQLCL_STDIN"
+  )
 
-if [ "$EXPORTED_COUNT" -ne 1 ]; then
-  echo "expected exactly one exported application directory under apps/$APEX_PARSING_SCHEMA, found $EXPORTED_COUNT" >&2
-  exit 1
-fi
-test -f "$EXPORTED_DIR/application.apx" || {
-  echo "APEX export did not create $EXPORTED_DIR/application.apx" >&2
-  exit 1
-}
-test -f "$EXPORTED_DIR/.apex/apexlang.json" || {
-  echo "APEX export did not create $EXPORTED_DIR/.apex/apexlang.json" >&2
-  exit 1
-}
+  # SQLcl names each export directory after the application alias, which can
+  # change independently of the immutable application id used by the mirror.
+  EXPORTED_DIR=""
+  EXPORTED_COUNT=0
+  while IFS= read -r -d '' candidate; do
+    EXPORTED_DIR="$candidate"
+    EXPORTED_COUNT=$((EXPORTED_COUNT + 1))
+  done < <(find "$RUN_STAGE_PARENT" -mindepth 1 -maxdepth 1 -type d -print0)
 
-# The mirror is named by the immutable application id, not the alias.
-APP_STAGE="$STAGE_PARENT/$APEX_APP_ID"
-if [ "$EXPORTED_DIR" != "$APP_STAGE" ]; then
-  test -e "$APP_STAGE" && {
-    echo "staged application id directory already exists: $APP_STAGE" >&2
+  if [ "$EXPORTED_COUNT" -ne 1 ]; then
+    echo "expected exactly one exported directory for application $app_id, found $EXPORTED_COUNT" >&2
+    exit 1
+  fi
+  test -f "$EXPORTED_DIR/application.apx" || {
+    echo "APEX export for application $app_id did not create application.apx" >&2
     exit 1
   }
-  mv -- "$EXPORTED_DIR" "$APP_STAGE"
-fi
+  test -f "$EXPORTED_DIR/.apex/apexlang.json" || {
+    echo "APEX export for application $app_id did not create .apex/apexlang.json" >&2
+    exit 1
+  }
 
-"$REPO_ROOT/scripts/normalize_apx.sh" "$APP_STAGE"
-"$REPO_ROOT/scripts/replace_mirror.sh" "$APP_STAGE" "apps/$APEX_PARSING_SCHEMA/$APEX_APP_ID"
+  APP_STAGE="$STAGE_PARENT/$app_id"
+  mv -- "$EXPORTED_DIR" "$APP_STAGE"
+  "$REPO_ROOT/scripts/normalize_apx.sh" "$APP_STAGE"
+done
+
+# Install only after every requested application has exported and verified.
+for app_id in "${APP_IDS[@]}"; do
+  "$REPO_ROOT/scripts/replace_mirror.sh" \
+    "$STAGE_PARENT/$app_id" "apps/$APEX_PARSING_SCHEMA/$app_id"
+done

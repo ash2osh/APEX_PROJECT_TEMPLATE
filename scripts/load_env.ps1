@@ -20,15 +20,15 @@ if (-not (Test-Path -LiteralPath $EnvFile -PathType Leaf)) {
 $projectEnvSeen = @{}
 $projectEnvAllowed = @(
   "PROJECT_NAME", "DB_ENVIRONMENT", "APEX_APP_ID",
-  "TABLES_SCHEMA", "TABLES_SQLCL_CONNECTION", "TABLES_EXPECTED_USER", "TABLES_REQUIRED_ROLE",
-  "CODE_SCHEMA", "CODE_SQLCL_CONNECTION", "CODE_EXPECTED_USER", "CODE_REQUIRED_ROLE",
-  "APEX_PARSING_SCHEMA", "APEX_SQLCL_CONNECTION", "APEX_EXPECTED_USER", "APEX_REQUIRED_ROLE",
+  "TABLES_SCHEMA", "TABLES_PREFIXES", "TABLES_SQLCL_CONNECTION", "TABLES_EXPECTED_USER",
+  "CODE_SCHEMA", "CODE_PREFIXES", "CODE_SQLCL_CONNECTION", "CODE_EXPECTED_USER",
+  "APEX_PARSING_SCHEMA", "APEX_SQLCL_CONNECTION", "APEX_EXPECTED_USER",
   "INSTALL_UC_APX", "UC_APX_SKILLS_AGENT"
 )
 foreach ($projectEnvLine in [System.IO.File]::ReadAllLines($EnvFile)) {
   $projectEnvLine = $projectEnvLine.TrimEnd("`r")
   if ([string]::IsNullOrWhiteSpace($projectEnvLine) -or $projectEnvLine.StartsWith("#")) { continue }
-  if ($projectEnvLine -notmatch '^([A-Z][A-Z0-9_]*)=(.*)$') {
+  if ($projectEnvLine -cnotmatch '^([A-Z][A-Z0-9_]*)=(.*)$') {
     throw "project environment error: invalid line in ${EnvFile}: $projectEnvLine"
   }
   $projectEnvKey = $Matches[1]
@@ -45,9 +45,9 @@ foreach ($projectEnvLine in [System.IO.File]::ReadAllLines($EnvFile)) {
 
 $projectEnvRequired = @(
   "PROJECT_NAME", "DB_ENVIRONMENT", "APEX_APP_ID",
-  "TABLES_SCHEMA", "TABLES_SQLCL_CONNECTION", "TABLES_EXPECTED_USER", "TABLES_REQUIRED_ROLE",
-  "CODE_SCHEMA", "CODE_SQLCL_CONNECTION", "CODE_EXPECTED_USER", "CODE_REQUIRED_ROLE",
-  "APEX_PARSING_SCHEMA", "APEX_SQLCL_CONNECTION", "APEX_EXPECTED_USER", "APEX_REQUIRED_ROLE",
+  "TABLES_SCHEMA", "TABLES_PREFIXES", "TABLES_SQLCL_CONNECTION", "TABLES_EXPECTED_USER",
+  "CODE_SCHEMA", "CODE_PREFIXES", "CODE_SQLCL_CONNECTION", "CODE_EXPECTED_USER",
+  "APEX_PARSING_SCHEMA", "APEX_SQLCL_CONNECTION", "APEX_EXPECTED_USER",
   "INSTALL_UC_APX", "UC_APX_SKILLS_AGENT"
 )
 foreach ($projectEnvKey in $projectEnvRequired) {
@@ -55,12 +55,38 @@ foreach ($projectEnvKey in $projectEnvRequired) {
     throw "project environment error: $projectEnvKey is required in $EnvFile"
   }
 }
-if ($env:APEX_APP_ID -notmatch '^[1-9][0-9]*$') { throw "APEX_APP_ID must be a positive integer" }
+function Assert-ProjectEnvUniqueCsv([string]$Name, [string]$Value) {
+  $projectEnvCsvSeen = @{}
+  foreach ($projectEnvCsvItem in $Value.Split(',')) {
+    if ($projectEnvCsvSeen.ContainsKey($projectEnvCsvItem)) {
+      throw "$Name must not contain duplicate values: $projectEnvCsvItem"
+    }
+    $projectEnvCsvSeen[$projectEnvCsvItem] = $true
+  }
+}
+
+if ($env:APEX_APP_ID -notmatch '^[1-9][0-9]*(,[1-9][0-9]*)*$') {
+  throw "APEX_APP_ID must be a comma-separated list of positive integers without spaces"
+}
+Assert-ProjectEnvUniqueCsv -Name "APEX_APP_ID" -Value $env:APEX_APP_ID
+foreach ($projectEnvKey in @("TABLES_PREFIXES", "CODE_PREFIXES")) {
+  $projectEnvPrefixValue = (Get-Item -LiteralPath "Env:$projectEnvKey").Value
+  if ($projectEnvPrefixValue -eq "*") { continue }
+  if ($projectEnvPrefixValue -cnotmatch '^[A-Z][A-Z0-9_$#]*(,[A-Z][A-Z0-9_$#]*)*$') {
+    throw "$projectEnvKey must be * or a comma-separated list of uppercase Oracle identifier prefixes without spaces"
+  }
+  Assert-ProjectEnvUniqueCsv -Name $projectEnvKey -Value $projectEnvPrefixValue
+  foreach ($projectEnvPrefixItem in $projectEnvPrefixValue.Split(',')) {
+    if ($projectEnvPrefixItem.Length -gt 128) {
+      throw "$projectEnvKey prefixes must be at most 128 characters"
+    }
+  }
+}
 if ($env:DB_ENVIRONMENT -notin @("development", "test", "staging", "production")) { throw "DB_ENVIRONMENT is invalid" }
 if ($env:INSTALL_UC_APX -notin @("true", "false")) { throw "INSTALL_UC_APX must be true or false" }
 if ($env:UC_APX_SKILLS_AGENT -notin @("universal", "claude-code")) { throw "UC_APX_SKILLS_AGENT is invalid" }
 foreach ($projectEnvKey in @("TABLES_SCHEMA", "TABLES_EXPECTED_USER", "CODE_SCHEMA", "CODE_EXPECTED_USER", "APEX_PARSING_SCHEMA", "APEX_EXPECTED_USER")) {
-  if ((Get-Item -LiteralPath "Env:$projectEnvKey").Value -notmatch '^[A-Z][A-Z0-9_$#]{0,127}$') {
+  if ((Get-Item -LiteralPath "Env:$projectEnvKey").Value -cnotmatch '^[A-Z][A-Z0-9_$#]{0,127}$') {
     throw "$projectEnvKey must be an uppercase Oracle identifier"
   }
 }
@@ -69,13 +95,9 @@ foreach ($projectEnvKey in @("TABLES_SQLCL_CONNECTION", "CODE_SQLCL_CONNECTION",
     throw "$projectEnvKey contains unsupported characters"
   }
 }
-foreach ($projectEnvKey in @("TABLES_REQUIRED_ROLE", "CODE_REQUIRED_ROLE", "APEX_REQUIRED_ROLE")) {
-  if ((Get-Item -LiteralPath "Env:$projectEnvKey").Value -notmatch '^[A-Z][A-Z0-9_$#]{0,127}$') {
-    throw "$projectEnvKey must be an uppercase Oracle role name or NONE"
-  }
-}
-
 # Mirror load_env.sh, which unsets its own temporaries after a successful load.
 Remove-Variable -Name projectEnvRepoRoot, projectEnvSeen, projectEnvAllowed,
-  projectEnvRequired, projectEnvLine, projectEnvKey, projectEnvValue `
+  projectEnvRequired, projectEnvLine, projectEnvKey, projectEnvValue,
+  projectEnvPrefixValue, projectEnvPrefixItem `
   -ErrorAction SilentlyContinue
+Remove-Item -Path Function:Assert-ProjectEnvUniqueCsv -ErrorAction SilentlyContinue

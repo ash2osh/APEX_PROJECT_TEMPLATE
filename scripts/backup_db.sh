@@ -112,12 +112,12 @@ run_backup_scope() {
   local schema="$2"
   local connection="$3"
   local expected_user="$4"
-  local required_role="$5"
+  local prefixes="$5"
   (
     cd "$STAGING_DIR"
     sql -S -noupdates -name "$connection" \
       "@$REPO_ROOT/scripts/backup_db.sql" \
-      "$schema" "$scope" "$DB_ENVIRONMENT" "$expected_user" "$required_role" \
+      "$schema" "$scope" "$DB_ENVIRONMENT" "$expected_user" "$prefixes" \
       < "$SQLCL_STDIN"
   )
   test -f "$STAGING_DIR/database/$schema/manifest-$scope.txt" || {
@@ -129,9 +129,9 @@ run_backup_scope() {
 
 # Both exports and manifests must complete before any generated mirror changes.
 run_backup_scope tables "$TABLES_SCHEMA" "$TABLES_SQLCL_CONNECTION" \
-  "$TABLES_EXPECTED_USER" "$TABLES_REQUIRED_ROLE"
+  "$TABLES_EXPECTED_USER" "$TABLES_PREFIXES"
 run_backup_scope code "$CODE_SCHEMA" "$CODE_SQLCL_CONNECTION" \
-  "$CODE_EXPECTED_USER" "$CODE_REQUIRED_ROLE"
+  "$CODE_EXPECTED_USER" "$CODE_PREFIXES"
 
 for schema in "${BACKUP_SCHEMAS[@]}"; do
   "$REPO_ROOT/scripts/replace_mirror.sh" \

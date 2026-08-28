@@ -1,12 +1,12 @@
 -- Export schema metadata only (never table data). Arguments are supplied by
 -- the validated shell/PowerShell wrappers: schema, scope, environment,
--- expected session user, and declared role.
+-- expected session user, and object-name prefixes.
 SET DEFINE ON
 DEFINE target_schema = '&1'
 DEFINE object_scope = '&2'
 DEFINE db_environment = '&3'
 DEFINE expected_user = '&4'
-DEFINE required_role = '&5'
+DEFINE object_prefixes = '&5'
 SET ENCODING UTF-8
 SET PAGESIZE 0
 -- PAGESIZE 0 alone does not suppress column headings in every SQLcl release,
@@ -62,6 +62,18 @@ BEGIN
         'VIEW', 'PACKAGE', 'PACKAGE BODY', 'PROCEDURE', 'FUNCTION', 'TRIGGER'
       ))
     )
+    AND (
+      '&&object_prefixes' = '*'
+      OR EXISTS (
+        SELECT 1
+        FROM (
+          SELECT REGEXP_SUBSTR('&&object_prefixes', '[^,]+', 1, LEVEL) object_prefix
+          FROM dual
+          CONNECT BY LEVEL <= REGEXP_COUNT('&&object_prefixes', ',') + 1
+        ) configured_prefixes
+        WHERE INSTR(all_objects.object_name, configured_prefixes.object_prefix) = 1
+      )
+    )
     AND NOT REGEXP_LIKE(object_name, '^[A-Za-z0-9_$#]+$');
 
   IF v_count > 0 THEN
@@ -89,68 +101,152 @@ SELECT 'SPOOL database/&&target_schema/tables/' || REPLACE(table_name, '$', '-S-
        || CHR(10) || 'SELECT DBMS_METADATA.GET_DDL(''TABLE'', ''' || table_name
        || ''', ''&&target_schema'') FROM DUAL' || CHR(59)
        || CHR(10) || 'SPOOL OFF'
-FROM all_tables
+FROM all_tables tables_to_export
 WHERE LOWER('&&object_scope') = 'tables'
-  AND owner = UPPER('&&target_schema')
+  AND tables_to_export.owner = UPPER('&&target_schema')
+  AND (
+    '&&object_prefixes' = '*'
+    OR EXISTS (
+      SELECT 1
+      FROM (
+        SELECT REGEXP_SUBSTR('&&object_prefixes', '[^,]+', 1, LEVEL) object_prefix
+        FROM dual
+        CONNECT BY LEVEL <= REGEXP_COUNT('&&object_prefixes', ',') + 1
+      ) configured_prefixes
+      WHERE INSTR(tables_to_export.table_name, configured_prefixes.object_prefix) = 1
+    )
+  )
 ORDER BY table_name;
 
 SELECT 'SPOOL database/&&target_schema/views/' || REPLACE(view_name, '$', '-S-') || '.sql'
        || CHR(10) || 'SELECT DBMS_METADATA.GET_DDL(''VIEW'', ''' || view_name
        || ''', ''&&target_schema'') FROM DUAL' || CHR(59)
        || CHR(10) || 'SPOOL OFF'
-FROM all_views
+FROM all_views views_to_export
 WHERE LOWER('&&object_scope') = 'code'
-  AND owner = UPPER('&&target_schema')
+  AND views_to_export.owner = UPPER('&&target_schema')
+  AND (
+    '&&object_prefixes' = '*'
+    OR EXISTS (
+      SELECT 1
+      FROM (
+        SELECT REGEXP_SUBSTR('&&object_prefixes', '[^,]+', 1, LEVEL) object_prefix
+        FROM dual
+        CONNECT BY LEVEL <= REGEXP_COUNT('&&object_prefixes', ',') + 1
+      ) configured_prefixes
+      WHERE INSTR(views_to_export.view_name, configured_prefixes.object_prefix) = 1
+    )
+  )
 ORDER BY view_name;
 
 SELECT 'SPOOL database/&&target_schema/packages/' || REPLACE(object_name, '$', '-S-') || '_SPEC.sql'
        || CHR(10) || 'SELECT DBMS_METADATA.GET_DDL(''PACKAGE_SPEC'', ''' || object_name
        || ''', ''&&target_schema'') FROM DUAL' || CHR(59)
        || CHR(10) || 'SPOOL OFF'
-FROM all_objects
+FROM all_objects objects_to_export
 WHERE LOWER('&&object_scope') = 'code'
-  AND owner = UPPER('&&target_schema')
-  AND object_type = 'PACKAGE'
+  AND objects_to_export.owner = UPPER('&&target_schema')
+  AND objects_to_export.object_type = 'PACKAGE'
+  AND (
+    '&&object_prefixes' = '*'
+    OR EXISTS (
+      SELECT 1
+      FROM (
+        SELECT REGEXP_SUBSTR('&&object_prefixes', '[^,]+', 1, LEVEL) object_prefix
+        FROM dual
+        CONNECT BY LEVEL <= REGEXP_COUNT('&&object_prefixes', ',') + 1
+      ) configured_prefixes
+      WHERE INSTR(objects_to_export.object_name, configured_prefixes.object_prefix) = 1
+    )
+  )
 ORDER BY object_name;
 
 SELECT 'SPOOL database/&&target_schema/packages/' || REPLACE(object_name, '$', '-S-') || '_BODY.sql'
        || CHR(10) || 'SELECT DBMS_METADATA.GET_DDL(''PACKAGE_BODY'', ''' || object_name
        || ''', ''&&target_schema'') FROM DUAL' || CHR(59)
        || CHR(10) || 'SPOOL OFF'
-FROM all_objects
+FROM all_objects objects_to_export
 WHERE LOWER('&&object_scope') = 'code'
-  AND owner = UPPER('&&target_schema')
-  AND object_type = 'PACKAGE BODY'
+  AND objects_to_export.owner = UPPER('&&target_schema')
+  AND objects_to_export.object_type = 'PACKAGE BODY'
+  AND (
+    '&&object_prefixes' = '*'
+    OR EXISTS (
+      SELECT 1
+      FROM (
+        SELECT REGEXP_SUBSTR('&&object_prefixes', '[^,]+', 1, LEVEL) object_prefix
+        FROM dual
+        CONNECT BY LEVEL <= REGEXP_COUNT('&&object_prefixes', ',') + 1
+      ) configured_prefixes
+      WHERE INSTR(objects_to_export.object_name, configured_prefixes.object_prefix) = 1
+    )
+  )
 ORDER BY object_name;
 
 SELECT 'SPOOL database/&&target_schema/procedures/' || REPLACE(object_name, '$', '-S-') || '.sql'
        || CHR(10) || 'SELECT DBMS_METADATA.GET_DDL(''PROCEDURE'', ''' || object_name
        || ''', ''&&target_schema'') FROM DUAL' || CHR(59)
        || CHR(10) || 'SPOOL OFF'
-FROM all_objects
+FROM all_objects objects_to_export
 WHERE LOWER('&&object_scope') = 'code'
-  AND owner = UPPER('&&target_schema')
-  AND object_type = 'PROCEDURE'
+  AND objects_to_export.owner = UPPER('&&target_schema')
+  AND objects_to_export.object_type = 'PROCEDURE'
+  AND (
+    '&&object_prefixes' = '*'
+    OR EXISTS (
+      SELECT 1
+      FROM (
+        SELECT REGEXP_SUBSTR('&&object_prefixes', '[^,]+', 1, LEVEL) object_prefix
+        FROM dual
+        CONNECT BY LEVEL <= REGEXP_COUNT('&&object_prefixes', ',') + 1
+      ) configured_prefixes
+      WHERE INSTR(objects_to_export.object_name, configured_prefixes.object_prefix) = 1
+    )
+  )
 ORDER BY object_name;
 
 SELECT 'SPOOL database/&&target_schema/functions/' || REPLACE(object_name, '$', '-S-') || '.sql'
        || CHR(10) || 'SELECT DBMS_METADATA.GET_DDL(''FUNCTION'', ''' || object_name
        || ''', ''&&target_schema'') FROM DUAL' || CHR(59)
        || CHR(10) || 'SPOOL OFF'
-FROM all_objects
+FROM all_objects objects_to_export
 WHERE LOWER('&&object_scope') = 'code'
-  AND owner = UPPER('&&target_schema')
-  AND object_type = 'FUNCTION'
+  AND objects_to_export.owner = UPPER('&&target_schema')
+  AND objects_to_export.object_type = 'FUNCTION'
+  AND (
+    '&&object_prefixes' = '*'
+    OR EXISTS (
+      SELECT 1
+      FROM (
+        SELECT REGEXP_SUBSTR('&&object_prefixes', '[^,]+', 1, LEVEL) object_prefix
+        FROM dual
+        CONNECT BY LEVEL <= REGEXP_COUNT('&&object_prefixes', ',') + 1
+      ) configured_prefixes
+      WHERE INSTR(objects_to_export.object_name, configured_prefixes.object_prefix) = 1
+    )
+  )
 ORDER BY object_name;
 
 SELECT 'SPOOL database/&&target_schema/triggers/' || REPLACE(object_name, '$', '-S-') || '.sql'
        || CHR(10) || 'SELECT DBMS_METADATA.GET_DDL(''TRIGGER'', ''' || object_name
        || ''', ''&&target_schema'') FROM DUAL' || CHR(59)
        || CHR(10) || 'SPOOL OFF'
-FROM all_objects
+FROM all_objects objects_to_export
 WHERE LOWER('&&object_scope') = 'code'
-  AND owner = UPPER('&&target_schema')
-  AND object_type = 'TRIGGER'
+  AND objects_to_export.owner = UPPER('&&target_schema')
+  AND objects_to_export.object_type = 'TRIGGER'
+  AND (
+    '&&object_prefixes' = '*'
+    OR EXISTS (
+      SELECT 1
+      FROM (
+        SELECT REGEXP_SUBSTR('&&object_prefixes', '[^,]+', 1, LEVEL) object_prefix
+        FROM dual
+        CONNECT BY LEVEL <= REGEXP_COUNT('&&object_prefixes', ',') + 1
+      ) configured_prefixes
+      WHERE INSTR(objects_to_export.object_name, configured_prefixes.object_prefix) = 1
+    )
+  )
 ORDER BY object_name;
 
 SPOOL OFF
@@ -177,8 +273,20 @@ WITH expected_types (object_type, object_scope) AS (
 SELECT expected_types.object_type || '=' || COUNT(all_objects.object_name)
 FROM expected_types
 LEFT JOIN all_objects
-  ON all_objects.owner = UPPER('&&target_schema')
+ ON all_objects.owner = UPPER('&&target_schema')
  AND all_objects.object_type = expected_types.object_type
+ AND (
+   '&&object_prefixes' = '*'
+   OR EXISTS (
+     SELECT 1
+     FROM (
+       SELECT REGEXP_SUBSTR('&&object_prefixes', '[^,]+', 1, LEVEL) object_prefix
+       FROM dual
+       CONNECT BY LEVEL <= REGEXP_COUNT('&&object_prefixes', ',') + 1
+     ) configured_prefixes
+     WHERE INSTR(all_objects.object_name, configured_prefixes.object_prefix) = 1
+   )
+ )
 WHERE expected_types.object_scope = LOWER('&&object_scope')
 GROUP BY expected_types.object_type
 ORDER BY expected_types.object_type;

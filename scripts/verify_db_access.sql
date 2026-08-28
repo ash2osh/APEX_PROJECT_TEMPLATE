@@ -1,5 +1,5 @@
 -- Shared identity check. The calling script must define target_schema,
--- db_environment, expected_user, and required_role.
+-- db_environment, and expected_user.
 --
 -- This script confirms *who and where* the session is. It does not audit
 -- privileges. Production safety in this template is an instruction to the
@@ -16,7 +16,6 @@ DECLARE
   v_target_schema     VARCHAR2(128) := UPPER('&&target_schema');
   v_environment       VARCHAR2(32)  := LOWER('&&db_environment');
   v_expected_user     VARCHAR2(128) := UPPER('&&expected_user');
-  v_required_role     VARCHAR2(128) := UPPER('&&required_role');
   v_session_user      VARCHAR2(128) := SYS_CONTEXT('USERENV', 'SESSION_USER');
   v_current_schema    VARCHAR2(128) := SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA');
   v_database_identity VARCHAR2(512) := SYS_CONTEXT('USERENV', 'DB_NAME') || '.'
@@ -58,7 +57,6 @@ BEGIN
     DBMS_OUTPUT.PUT_LINE('*  Do NOT COMMIT. Prepare changes for an approved deployment.  *');
     DBMS_OUTPUT.PUT_LINE('*                                                              *');
     DBMS_OUTPUT.PUT_LINE('*  This is not enforced by the database. It is your contract.  *');
-    DBMS_OUTPUT.PUT_LINE('*  declared role: ' || RPAD(NVL(v_required_role, 'NONE'), 44) || '*');
     DBMS_OUTPUT.PUT_LINE('****************************************************************');
   END IF;
 END;

@@ -63,14 +63,14 @@ $backupTargets = @(
     Schema = $env:TABLES_SCHEMA
     Connection = $env:TABLES_SQLCL_CONNECTION
     ExpectedUser = $env:TABLES_EXPECTED_USER
-    RequiredRole = $env:TABLES_REQUIRED_ROLE
+    Prefixes = $env:TABLES_PREFIXES
   },
   [PSCustomObject]@{
     Scope = "code"
     Schema = $env:CODE_SCHEMA
     Connection = $env:CODE_SQLCL_CONNECTION
     ExpectedUser = $env:CODE_EXPECTED_USER
-    RequiredRole = $env:CODE_REQUIRED_ROLE
+    Prefixes = $env:CODE_PREFIXES
   }
 )
 $backupSchemas = @($backupTargets.Schema | Select-Object -Unique)
@@ -111,7 +111,7 @@ try {
         "-S", "-noupdates", "-name", $target.Connection,
         "@$(Join-Path $repoRoot 'scripts/backup_db.sql')",
         $target.Schema, $target.Scope, $env:DB_ENVIRONMENT,
-        $target.ExpectedUser, $target.RequiredRole
+        $target.ExpectedUser, $target.Prefixes
       )
     if ($sqlclExit -ne 0) {
       throw "SQLcl $($target.Scope) metadata backup failed with exit code $sqlclExit"

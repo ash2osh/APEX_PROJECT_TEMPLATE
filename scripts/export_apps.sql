@@ -1,13 +1,16 @@
 -- Export one APEX application as APEXlang. Arguments are supplied by the
 -- validated shell/PowerShell wrappers: schema, app id, environment,
--- expected session user, declared role.
+-- expected session user.
 SET DEFINE ON
 DEFINE target_schema = '&1'
 DEFINE app_id = '&2'
 DEFINE db_environment = '&3'
 DEFINE expected_user = '&4'
-DEFINE required_role = '&5'
 SET ENCODING UTF-8
+SET HEADING OFF
+SET FEEDBACK OFF
+SET ECHO OFF
+SET VERIFY OFF
 WHENEVER SQLERROR EXIT SQL.SQLCODE
 WHENEVER OSERROR EXIT FAILURE
 
