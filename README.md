@@ -141,6 +141,8 @@ ai_generate/YYYY-MM-DD/         AI-generated SQL/PLSQL deployment scripts
 docs/                           Project documentation and design records
 scratch/                        Local throwaway space (gitignored)
 scripts/                        Export/backup automation (.sh + .ps1 pairs)
+                                plus invoke_sqlcl.ps1, the shared PowerShell
+                                SQLcl launcher (bash redirects stdin inline)
 .agents/                        Canonical, client-agnostic agent instructions
 .claude/                        Thin Claude-Code-specific pointers into .agents/
 .github/                        CI workflow running the template self-checks

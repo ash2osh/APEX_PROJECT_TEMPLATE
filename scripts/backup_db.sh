@@ -40,6 +40,15 @@ cleanup() { rm -rf -- "$STAGING_DIR"; }
 trap cleanup EXIT
 mkdir -p "$STAGING_DIR/scripts"
 
+# SQLcl builds a JLine console over its standard input at startup. Handed a
+# descriptor it cannot probe -- a pipe, or the Windows NUL device that
+# /dev/null becomes under Git Bash -- it aborts with
+# "java.io.IOException: Incorrect function" before running the script, and
+# still exits 0. An empty regular file is a standard input every platform can
+# probe, and it also stops SQLcl from consuming the caller's own input.
+SQLCL_STDIN="$STAGING_DIR/.sqlcl-stdin"
+: > "$SQLCL_STDIN"
+
 for schema in "${BACKUP_SCHEMAS[@]}"; do
   db_stage="$STAGING_DIR/database/$schema"
   mkdir -p "$db_stage/tables" "$db_stage/views" "$db_stage/packages" \
@@ -55,13 +64,28 @@ verify_scope_complete() {
   local schema="$2"
   local manifest="$STAGING_DIR/database/$schema/manifest-$scope.txt"
   local expected=0
+  local counted=0
   local line count
   while IFS= read -r line || [ -n "$line" ]; do
+    # SQLcl spools with the platform's line terminator, so on Windows every
+    # manifest line arrives with a trailing CR. Left in place it defeats the
+    # numeric test below, every count is skipped, and the guard silently
+    # compares 0 against 0 -- passing an empty mirror straight through.
+    line="${line%$'\r'}"
     count="${line##*=}"
     [[ "$line" == *=* ]] || continue
     [[ "$count" =~ ^[0-9]+$ ]] || continue
     expected=$((expected + count))
+    counted=$((counted + 1))
   done < "$manifest"
+
+  # No parsable counts at all means the manifest itself is unusable. Fail
+  # closed rather than approving whatever happens to be staged.
+  if [ "$counted" -eq 0 ]; then
+    echo "database backup manifest for $schema ($scope) has no readable object" >&2
+    echo "counts; the mirror was not replaced" >&2
+    exit 1
+  fi
 
   local scope_dirs
   case "$scope" in
@@ -93,7 +117,8 @@ run_backup_scope() {
     cd "$STAGING_DIR"
     sql -S -noupdates -name "$connection" \
       "@$REPO_ROOT/scripts/backup_db.sql" \
-      "$schema" "$scope" "$DB_ENVIRONMENT" "$expected_user" "$required_role"
+      "$schema" "$scope" "$DB_ENVIRONMENT" "$expected_user" "$required_role" \
+      < "$SQLCL_STDIN"
   )
   test -f "$STAGING_DIR/database/$schema/manifest-$scope.txt" || {
     echo "database backup did not create manifest-$scope.txt under database/$schema" >&2

@@ -15,6 +15,16 @@ fail() {
   exit 1
 }
 
+# Git Bash on Windows refuses `ln -s` to a target that does not exist yet,
+# because it silently falls back to copying. MSYS=winsymlinks:nativestrict
+# asks for a real Windows symlink instead, which needs Developer Mode or the
+# create-symlink privilege. Try it, verify the result really is a link, and
+# report honestly when the platform cannot make one.
+make_symlink() {
+  MSYS=winsymlinks:nativestrict ln -s "$1" "$2" 2>/dev/null || return 1
+  [ -L "$2" ] || return 1
+}
+
 mkdir -p "$TEST_REPO/database/mirror" "$TEST_REPO/scratch/staged"
 git init -q "$TEST_REPO"
 printf 'stale\n' > "$TEST_REPO/database/mirror/stale.txt"
@@ -60,21 +70,27 @@ if MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
   fail "staging outside scratch was accepted"
 fi
 
-mkdir -p "$TEST_REPO/scratch/symlink-content-staged"
+mkdir -p "$TEST_REPO/outside" "$TEST_REPO/scratch/symlink-content-staged"
 printf 'content\n' > "$TEST_REPO/scratch/symlink-content-staged/file.txt"
-ln -s "$TEST_REPO/outside" "$TEST_REPO/scratch/symlink-content-staged/outside-link"
-if MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
-    "$TEST_REPO/scratch/symlink-content-staged" "database/symlink-content"; then
-  fail "staging with symlinked content was accepted"
-fi
+if make_symlink "$TEST_REPO/outside" "$TEST_REPO/scratch/symlink-content-staged/outside-link"; then
+  if MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
+      "$TEST_REPO/scratch/symlink-content-staged" "database/symlink-content"; then
+    fail "staging with symlinked content was accepted"
+  fi
 
-mkdir -p "$TEST_REPO/outside" "$TEST_REPO/scratch/symlink-staged"
-printf 'outside\n' > "$TEST_REPO/scratch/symlink-staged/file.txt"
-mv "$TEST_REPO/apps" "$TEST_REPO/apps-real"
-ln -s "$TEST_REPO/outside" "$TEST_REPO/apps"
-if MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
-    "$TEST_REPO/scratch/symlink-staged" "apps/schema/app"; then
-  fail "symlinked mirror parent was accepted"
+  mkdir -p "$TEST_REPO/scratch/symlink-staged"
+  printf 'outside\n' > "$TEST_REPO/scratch/symlink-staged/file.txt"
+  mv "$TEST_REPO/apps" "$TEST_REPO/apps-real"
+  make_symlink "$TEST_REPO/outside" "$TEST_REPO/apps" \
+    || fail "could not replace the app mirror parent with a symlink"
+  if MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
+      "$TEST_REPO/scratch/symlink-staged" "apps/schema/app"; then
+    fail "symlinked mirror parent was accepted"
+  fi
+  rm -f "$TEST_REPO/apps"
+  mv "$TEST_REPO/apps-real" "$TEST_REPO/apps"
+else
+  echo "SKIP: this platform cannot create symbolic links — replace_mirror.sh symlink refusals were not exercised" >&2
 fi
 
 printf 'local change\n' >> "$TEST_REPO/database/mirror/new.txt"
@@ -94,7 +110,18 @@ printf 'lone\rreturn' > "$TEST_REPO/scratch/lone-cr.apx"
 test "$(tail -c 1 "$TEST_REPO/scratch/sample.apx" | od -An -t x1 | tr -d ' \n')" = "0a" || fail "normalizer did not add a trailing LF"
 ! grep -Eq 'git[[:space:]]+checkout' "$REPO_ROOT/scripts/normalize_apx.sh" "$REPO_ROOT/scripts/normalize_apx.ps1" || fail "normalizer still invokes Git checkout"
 
-if command -v pwsh >/dev/null 2>&1; then
+# The .ps1 half of every script pair only gets exercised if a PowerShell is
+# found. Windows ships Windows PowerShell 5.1 as "powershell" and often has
+# no "pwsh" at all, and the .ps1 scripts declare #Requires -Version 5.1, so
+# fall back to it rather than skipping the whole half of the suite there.
+PWSH=""
+for candidate in pwsh powershell; do
+  if command -v "$candidate" >/dev/null 2>&1; then
+    PWSH="$candidate"
+    break
+  fi
+done
+if [ -n "$PWSH" ]; then
   mkdir -p "$TEST_REPO/ps-scripts" "$TEST_REPO/database/mirror-ps" "$TEST_REPO/scratch/staged-ps"
   cp "$REPO_ROOT/scripts/replace_mirror.ps1" "$TEST_REPO/ps-scripts/replace_mirror.ps1"
 
@@ -103,20 +130,20 @@ if command -v pwsh >/dev/null 2>&1; then
   git -C "$TEST_REPO" -c user.name=TemplateTest -c user.email=test@example.invalid commit -qm "ps mirror seed"
   printf 'new\n' > "$TEST_REPO/scratch/staged-ps/new.txt"
 
-  pwsh -NoProfile -File "$TEST_REPO/ps-scripts/replace_mirror.ps1" \
+  "$PWSH" -NoProfile -File "$TEST_REPO/ps-scripts/replace_mirror.ps1" \
     -StagedDir "$TEST_REPO/scratch/staged-ps" -Destination "database/mirror-ps" \
     || fail "PowerShell replace_mirror.ps1 failed on a valid replacement"
   test -f "$TEST_REPO/database/mirror-ps/new.txt" || fail "PowerShell replace_mirror.ps1 did not install new mirror content"
   test ! -e "$TEST_REPO/database/mirror-ps/stale.txt" || fail "PowerShell replace_mirror.ps1 retained stale mirror content"
 
   mkdir -p "$TEST_REPO/scratch/empty-staged-ps"
-  if pwsh -NoProfile -File "$TEST_REPO/ps-scripts/replace_mirror.ps1" \
+  if "$PWSH" -NoProfile -File "$TEST_REPO/ps-scripts/replace_mirror.ps1" \
       -StagedDir "$TEST_REPO/scratch/empty-staged-ps" -Destination "database/empty-ps"; then
     fail "PowerShell replace_mirror.ps1 accepted empty staging"
   fi
 
   printf 'not a directory\n' > "$TEST_REPO/scratch/file-staged-ps"
-  if pwsh -NoProfile -File "$TEST_REPO/ps-scripts/replace_mirror.ps1" \
+  if "$PWSH" -NoProfile -File "$TEST_REPO/ps-scripts/replace_mirror.ps1" \
       -StagedDir "$TEST_REPO/scratch/file-staged-ps" -Destination "database/file-ps"; then
     fail "PowerShell replace_mirror.ps1 accepted a file as staging input"
   fi
@@ -124,18 +151,18 @@ if command -v pwsh >/dev/null 2>&1; then
   printf 'local change\n' >> "$TEST_REPO/database/mirror-ps/new.txt"
   mkdir -p "$TEST_REPO/scratch/dirty-staged-ps"
   printf 'replacement\n' > "$TEST_REPO/scratch/dirty-staged-ps/new.txt"
-  if pwsh -NoProfile -File "$TEST_REPO/ps-scripts/replace_mirror.ps1" \
+  if "$PWSH" -NoProfile -File "$TEST_REPO/ps-scripts/replace_mirror.ps1" \
       -StagedDir "$TEST_REPO/scratch/dirty-staged-ps" -Destination "database/mirror-ps"; then
     fail "PowerShell replace_mirror.ps1 did not refuse a dirty mirror"
   fi
 
   printf 'one\r\ntwo\r\n' > "$TEST_REPO/scratch/sample-ps.apx"
-  pwsh -NoProfile -File "$REPO_ROOT/scripts/normalize_apx.ps1" -TargetDir "$TEST_REPO/scratch" \
+  "$PWSH" -NoProfile -File "$REPO_ROOT/scripts/normalize_apx.ps1" -TargetDir "$TEST_REPO/scratch" \
     || fail "PowerShell normalize_apx.ps1 failed"
   ! LC_ALL=C grep -q $'\r' "$TEST_REPO/scratch/sample-ps.apx" || fail "PowerShell normalizer retained CR characters"
   test "$(tail -c 1 "$TEST_REPO/scratch/sample-ps.apx" | od -An -t x1 | tr -d ' \n')" = "0a" || fail "PowerShell normalizer did not add a trailing LF"
 else
-  echo "SKIP: pwsh not found — replace_mirror.ps1 and normalize_apx.ps1 were not exercised" >&2
+  echo "SKIP: no pwsh or powershell on PATH — replace_mirror.ps1 and normalize_apx.ps1 were not exercised" >&2
 fi
 
 test -f "$REPO_ROOT/.env.example" || fail ".env.example is missing"
@@ -290,6 +317,16 @@ grep -q 'manifest-code.txt' "$REPO_ROOT/scripts/backup_db.sql" || fail "code man
 # INSERT ... KU$ data-movement statement to every table's DDL.
 grep -q '^SET DDL INSERT OFF$' "$REPO_ROOT/scripts/backup_db.sql" \
   || fail "backup_db.sql no longer disables the SQLcl DDL insert transform"
+# SQLcl's client-side statement splitter cuts a SELECT at the first ';' even
+# when that ';' sits inside a quoted literal. The driver-generating queries
+# then return no rows, print no error, and exit 0, leaving an empty driver and
+# an empty mirror. The generated statement terminator must stay CHR(59).
+grep -q '^SET HEADING OFF$' "$REPO_ROOT/scripts/backup_db.sql" \
+  || fail "backup_db.sql no longer turns column headings off for the generated driver"
+test "$(grep -c "FROM DUAL' || CHR(59)$" "$REPO_ROOT/scripts/backup_db.sql")" = 7 \
+  || fail "backup_db.sql does not build all seven generated terminators with CHR(59)"
+! grep -q "FROM DUAL;'" "$REPO_ROOT/scripts/backup_db.sql" \
+  || fail "backup_db.sql embeds a literal ';' inside a generated string literal"
 # SQLcl cannot SPOOL to a path containing '$' (SP2-0332) and does not stop on
 # the failure, so object names must be encoded in the generated filenames.
 test "$(grep -c "REPLACE(\(table_name\|view_name\|object_name\), '\$', '-S-')" \
@@ -299,6 +336,15 @@ grep -q 'verify_scope_complete' "$REPO_ROOT/scripts/backup_db.sh" \
   || fail "backup_db.sh no longer verifies scope completeness against the manifest"
 grep -q 'Test-ScopeComplete' "$REPO_ROOT/scripts/backup_db.ps1" \
   || fail "backup_db.ps1 no longer verifies scope completeness against the manifest"
+# SQLcl builds a JLine console over stdin and aborts -- then exits 0 -- when
+# stdin is a descriptor it cannot probe, which is what every non-interactive
+# caller hands it on Windows. Both wrappers must feed it an empty file.
+for SQLCL_WRAPPER in "$REPO_ROOT/scripts/backup_db.sh" "$REPO_ROOT/scripts/export_apps.sh"; do
+  grep -q 'SQLCL_STDIN=' "$SQLCL_WRAPPER" \
+    || fail "$(basename "$SQLCL_WRAPPER") does not redirect SQLcl standard input"
+  grep -q '< "\$SQLCL_STDIN"' "$SQLCL_WRAPPER" \
+    || fail "$(basename "$SQLCL_WRAPPER") does not feed SQLcl the empty standard input file"
+done
 grep -q 'check_db_target.sh" read tables' "$REPO_ROOT/scripts/backup_db.sh" || fail "database backup does not guard the tables target"
 grep -q 'check_db_target.sh" read code' "$REPO_ROOT/scripts/backup_db.sh" || fail "database backup does not guard the code target"
 grep -q 'APEX_SQLCL_CONNECTION' "$REPO_ROOT/scripts/export_apps.sh" || fail "APEX export does not use the APEX connection profile"

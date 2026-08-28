@@ -37,17 +37,32 @@ done
 
 printf '%s:%s:%s\n' "$scope" "$schema" "$connection" >> "$FAKE_SQL_LOG"
 mkdir -p "database/$schema/tables" "database/$schema/views"
+
+# SQLcl spools with the platform's line terminator, so the same manifest is
+# LF-terminated on Linux and CRLF-terminated on Windows. Both must parse.
+write_manifest() {
+  if [ "${FAKE_MANIFEST_CRLF:-false}" = true ]; then
+    printf '%s\r\n' "$@" > "database/$schema/manifest-$scope.txt"
+  else
+    printf '%s\n' "$@" > "database/$schema/manifest-$scope.txt"
+  fi
+}
+
 if [ "$scope" = tables ]; then
   printf 'table metadata\n' > "database/$schema/tables/T_SAMPLE.sql"
   # A spool failure loses the file but never the manifest count.
   if [ "${FAKE_DROP_ONE_FILE:-false}" != true ]; then
     printf 'table metadata\n' > "database/$schema/tables/T_SECOND.sql"
   fi
-  printf 'TABLE=2\n' > "database/$schema/manifest-$scope.txt"
+  if [ "${FAKE_MANIFEST_UNREADABLE:-false}" = true ]; then
+    write_manifest '' 'no counts here'
+  else
+    write_manifest 'TABLE=2'
+  fi
 else
   printf 'view metadata\n' > "database/$schema/views/V_SAMPLE.sql"
-  printf 'VIEW=1\nPACKAGE=0\nPACKAGE BODY=0\nPROCEDURE=0\nFUNCTION=0\nTRIGGER=0\n' \
-    > "database/$schema/manifest-$scope.txt"
+  write_manifest 'VIEW=1' 'PACKAGE=0' 'PACKAGE BODY=0' 'PROCEDURE=0' \
+    'FUNCTION=0' 'TRIGGER=0'
 fi
 printf '%s\n' "$scope" > "database/$schema/manifest-$scope-scope.txt"
 EOF
@@ -103,6 +118,7 @@ run_case() {
 
   PATH="$TEST_ROOT/bin:$PATH" PROJECT_ENV_FILE="$env_file" \
     FAKE_REPO_ROOT="$TEST_REPO" FAKE_REQUIRED_DESTINATIONS="$required_destinations" \
+    FAKE_MANIFEST_CRLF="${FAKE_MANIFEST_CRLF:-false}" \
     FAKE_SQL_LOG="$sql_log" "$TEST_REPO/scripts/backup_db.sh"
 
   test "$(wc -l < "$sql_log" | tr -d ' ')" = 2 || fail "$case_name did not run exactly two SQLcl passes"
@@ -110,7 +126,7 @@ run_case() {
   sed -n '2p' "$sql_log" | grep -q "^code:$code_schema:" || fail "$case_name did not run code second"
   test -f "$TEST_REPO/database/$tables_schema/manifest-tables.txt" || fail "$case_name lost the tables manifest"
   test -f "$TEST_REPO/database/$code_schema/manifest-code.txt" || fail "$case_name lost the code manifest"
-  grep -q '^TABLE=2$' "$TEST_REPO/database/$tables_schema/manifest-tables.txt" \
+  grep -qE $'^TABLE=2\r?$' "$TEST_REPO/database/$tables_schema/manifest-tables.txt" \
     || fail "$case_name lost the tables manifest counts"
   test ! -e "$TEST_REPO/database/$tables_schema/old.txt" || fail "$case_name retained stale table mirror content"
   test ! -e "$TEST_REPO/database/$code_schema/old.txt" || fail "$case_name retained stale code mirror content"
@@ -151,5 +167,43 @@ test -f "$TEST_REPO/database/DATA/tables/T_SECOND.sql" \
   || fail "an incomplete backup damaged the previous mirror"
 test -z "$(git -C "$TEST_REPO" status --porcelain -- database)" \
   || fail "an incomplete backup left the mirror dirty"
+
+# SQLcl spools CRLF on Windows. A completeness guard that cannot read a CRLF
+# manifest counts nothing, compares 0 against 0, and waves an empty mirror
+# through -- the exact failure this guard exists to stop. A CRLF manifest must
+# behave the same as an LF one: complete passes, incomplete is refused.
+FAKE_MANIFEST_CRLF=true run_case crlf-manifest CRDATA CRCODE
+
+for schema in CRDATA CRCODE; do
+  printf 'old mirror\n' > "$TEST_REPO/database/$schema/old.txt"
+done
+git -C "$TEST_REPO" add database
+git -C "$TEST_REPO" -c user.name=TemplateTest -c user.email=test@example.invalid \
+  commit -qm "record CRLF-manifest refresh"
+
+crlf_incomplete_env="$TEST_ROOT/crlf-incomplete.env"
+write_env "$crlf_incomplete_env" CRDATA CRCODE
+if PATH="$TEST_ROOT/bin:$PATH" PROJECT_ENV_FILE="$crlf_incomplete_env" \
+  FAKE_REPO_ROOT="$TEST_REPO" FAKE_REQUIRED_DESTINATIONS="CRDATA,CRCODE" \
+  FAKE_SQL_LOG="$TEST_ROOT/crlf-incomplete.log" FAKE_DROP_ONE_FILE=true \
+  FAKE_MANIFEST_CRLF=true \
+  "$TEST_REPO/scripts/backup_db.sh" 2>"$TEST_ROOT/crlf-incomplete.err"; then
+  fail "backup accepted an incomplete mirror described by a CRLF manifest"
+fi
+grep -q 'manifest expects' "$TEST_ROOT/crlf-incomplete.err" \
+  || fail "the CRLF incomplete backup failed for the wrong reason: $(cat "$TEST_ROOT/crlf-incomplete.err")"
+
+# A manifest with no readable counts says nothing about completeness, so it
+# must fail closed instead of approving whatever happens to be staged.
+unreadable_env="$TEST_ROOT/unreadable.env"
+write_env "$unreadable_env" CRDATA CRCODE
+if PATH="$TEST_ROOT/bin:$PATH" PROJECT_ENV_FILE="$unreadable_env" \
+  FAKE_REPO_ROOT="$TEST_REPO" FAKE_REQUIRED_DESTINATIONS="CRDATA,CRCODE" \
+  FAKE_SQL_LOG="$TEST_ROOT/unreadable.log" FAKE_MANIFEST_UNREADABLE=true \
+  "$TEST_REPO/scripts/backup_db.sh" 2>"$TEST_ROOT/unreadable.err"; then
+  fail "backup accepted a manifest with no readable object counts"
+fi
+grep -q 'no readable object' "$TEST_ROOT/unreadable.err" \
+  || fail "the unreadable-manifest backup failed for the wrong reason: $(cat "$TEST_ROOT/unreadable.err")"
 
 echo "PASS: database backup two-pass orchestration"

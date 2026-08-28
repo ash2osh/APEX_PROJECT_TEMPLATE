@@ -15,12 +15,21 @@ trap cleanup EXIT
 STAGE_PARENT="$STAGING_DIR/apps/$APEX_PARSING_SCHEMA"
 mkdir -p "$STAGE_PARENT"
 
+# SQLcl builds a JLine console over its standard input at startup. Handed a
+# descriptor it cannot probe -- a pipe, or the Windows NUL device that
+# /dev/null becomes under Git Bash -- it aborts with
+# "java.io.IOException: Incorrect function" before running the script, and
+# still exits 0. An empty regular file is a standard input every platform can
+# probe, and it also stops SQLcl from consuming the caller's own input.
+SQLCL_STDIN="$STAGING_DIR/.sqlcl-stdin"
+: > "$SQLCL_STDIN"
+
 (
   cd "$STAGING_DIR"
   sql -S -noupdates -name "$APEX_SQLCL_CONNECTION" \
     "@$REPO_ROOT/scripts/export_apps.sql" \
     "$APEX_PARSING_SCHEMA" "$APEX_APP_ID" "$DB_ENVIRONMENT" \
-    "$APEX_EXPECTED_USER" "$DB_ROLE_ARG"
+    "$APEX_EXPECTED_USER" "$DB_ROLE_ARG" < "$SQLCL_STDIN"
 )
 
 # SQLcl names the export directory after the application alias, which this

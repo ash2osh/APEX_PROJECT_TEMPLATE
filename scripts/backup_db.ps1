@@ -3,6 +3,7 @@
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 . (Join-Path $PSScriptRoot "load_env.ps1") -EnvFile $env:PROJECT_ENV_FILE
+. (Join-Path $PSScriptRoot "invoke_sqlcl.ps1")
 & (Join-Path $PSScriptRoot "check_db_target.ps1") -Operation read -Target tables
 & (Join-Path $PSScriptRoot "check_db_target.ps1") -Operation read -Target code
 
@@ -18,12 +19,23 @@ function Test-ScopeComplete {
   )
   $manifestPath = Join-Path $StagingPath "database/$Schema/manifest-$Scope.txt"
   $expected = 0
+  $counted = 0
   foreach ($line in (Get-Content -LiteralPath $manifestPath)) {
     $separator = $line.LastIndexOf('=')
     if ($separator -lt 0) { continue }
     $count = $line.Substring($separator + 1).Trim()
     $parsed = 0
-    if ([int]::TryParse($count, [ref] $parsed)) { $expected += $parsed }
+    if ([int]::TryParse($count, [ref] $parsed)) {
+      $expected += $parsed
+      $counted += 1
+    }
+  }
+
+  # No parsable counts at all means the manifest itself is unusable. Fail
+  # closed rather than approving whatever happens to be staged.
+  if ($counted -eq 0) {
+    throw ("database backup manifest for $Schema ($Scope) has no readable " +
+      "object counts; the mirror was not replaced")
   }
 
   if ($Scope -eq 'tables') {
@@ -93,12 +105,16 @@ try {
 
   # Both exports and manifests must complete before any generated mirror changes.
   foreach ($target in $backupTargets) {
-    & sql -S -noupdates -name $target.Connection `
-      "@$(Join-Path $repoRoot 'scripts/backup_db.sql')" `
-      $target.Schema $target.Scope $env:DB_ENVIRONMENT `
-      $target.ExpectedUser $target.RequiredRole
-    if ($LASTEXITCODE -ne 0) {
-      throw "SQLcl $($target.Scope) metadata backup failed with exit code $LASTEXITCODE"
+    $sqlclExit = Invoke-Sqlcl -WorkingDirectory $stagingPath `
+      -StdInFile (Join-Path $stagingPath ".sqlcl-stdin") `
+      -Arguments @(
+        "-S", "-noupdates", "-name", $target.Connection,
+        "@$(Join-Path $repoRoot 'scripts/backup_db.sql')",
+        $target.Schema, $target.Scope, $env:DB_ENVIRONMENT,
+        $target.ExpectedUser, $target.RequiredRole
+      )
+    if ($sqlclExit -ne 0) {
+      throw "SQLcl $($target.Scope) metadata backup failed with exit code $sqlclExit"
     }
     $manifestPath = Join-Path $stagingPath "database/$($target.Schema)/manifest-$($target.Scope).txt"
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {

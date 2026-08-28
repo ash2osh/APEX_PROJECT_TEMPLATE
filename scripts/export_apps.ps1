@@ -3,6 +3,7 @@
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 . (Join-Path $PSScriptRoot "load_env.ps1") -EnvFile $env:PROJECT_ENV_FILE
+. (Join-Path $PSScriptRoot "invoke_sqlcl.ps1")
 & (Join-Path $PSScriptRoot "check_db_target.ps1") -Operation read -Target apex
 $dbRoleArg = $env:APEX_REQUIRED_ROLE
 
@@ -16,11 +17,15 @@ try {
   $locationPushed = $false
   Push-Location $stagingPath
   $locationPushed = $true
-  & sql -S -noupdates -name $env:APEX_SQLCL_CONNECTION `
-    "@$(Join-Path $repoRoot 'scripts/export_apps.sql')" `
-    $env:APEX_PARSING_SCHEMA $env:APEX_APP_ID $env:DB_ENVIRONMENT `
-    $env:APEX_EXPECTED_USER $dbRoleArg
-  if ($LASTEXITCODE -ne 0) { throw "SQLcl application export failed with exit code $LASTEXITCODE" }
+  $sqlclExit = Invoke-Sqlcl -WorkingDirectory $stagingPath `
+    -StdInFile (Join-Path $stagingPath ".sqlcl-stdin") `
+    -Arguments @(
+      "-S", "-noupdates", "-name", $env:APEX_SQLCL_CONNECTION,
+      "@$(Join-Path $repoRoot 'scripts/export_apps.sql')",
+      $env:APEX_PARSING_SCHEMA, $env:APEX_APP_ID, $env:DB_ENVIRONMENT,
+      $env:APEX_EXPECTED_USER, $dbRoleArg
+    )
+  if ($sqlclExit -ne 0) { throw "SQLcl application export failed with exit code $sqlclExit" }
 
   # SQLcl names the export directory after the application alias, which this
   # template does not control and which can be renamed in APEX at any time.
