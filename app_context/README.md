@@ -27,7 +27,7 @@ does not need to exist before then.
 
 ## Rule
 
-Before touching an app under `apps/<schema>/<app-slug>/`, check whether
+Before touching an app under `apps/<parsing-schema>/<app-slug>/`, check whether
 `app_context/<app-slug>_<app-id>/context.md` already exists and
 read it first — it may already document the exact pattern, bug, or
 constraint you're about to rediscover. After resolving a non-trivial issue,

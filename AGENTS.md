@@ -17,6 +17,11 @@ When a task edits files under `apps/`, also read
 when the optional `uc-apx` CLI is available and how to fall back when it is
 not.
 
+For `/init`, `/init <project-name>`, `$initialize-project`, or a natural-
+language request to initialize, instantiate, or configure this cloned
+template, read and follow
+[`.agents/skills/initialize-project/SKILL.md`](.agents/skills/initialize-project/SKILL.md).
+
 For project setup, if `.env` exists and its safely parsed
 `INSTALL_UC_APX` value is `true`, read and follow
 [`.agents/skills/install-uc-apx/SKILL.md`](.agents/skills/install-uc-apx/SKILL.md).

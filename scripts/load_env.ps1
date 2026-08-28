@@ -9,8 +9,10 @@ if (-not (Test-Path -LiteralPath $EnvFile -PathType Leaf)) {
 
 $seen = @{}
 $allowed = @(
-  "PROJECT_NAME", "DB_TARGET_SCHEMA", "APEX_APP_ID", "APEX_APP_SLUG",
-  "SQLCL_CONNECTION", "DB_ENVIRONMENT", "DB_EXPECTED_USER", "DB_REQUIRED_ROLE",
+  "PROJECT_NAME", "DB_ENVIRONMENT", "APEX_APP_ID", "APEX_APP_SLUG",
+  "TABLES_SCHEMA", "TABLES_SQLCL_CONNECTION", "TABLES_EXPECTED_USER", "TABLES_REQUIRED_ROLE",
+  "CODE_SCHEMA", "CODE_SQLCL_CONNECTION", "CODE_EXPECTED_USER", "CODE_REQUIRED_ROLE",
+  "APEX_PARSING_SCHEMA", "APEX_SQLCL_CONNECTION", "APEX_EXPECTED_USER", "APEX_REQUIRED_ROLE",
   "INSTALL_UC_APX", "UC_APX_SKILLS_AGENT"
 )
 foreach ($line in [System.IO.File]::ReadAllLines($EnvFile)) {
@@ -32,8 +34,10 @@ foreach ($line in [System.IO.File]::ReadAllLines($EnvFile)) {
 }
 
 $required = @(
-  "PROJECT_NAME", "DB_TARGET_SCHEMA", "APEX_APP_ID", "APEX_APP_SLUG",
-  "SQLCL_CONNECTION", "DB_ENVIRONMENT", "DB_EXPECTED_USER", "DB_REQUIRED_ROLE",
+  "PROJECT_NAME", "DB_ENVIRONMENT", "APEX_APP_ID", "APEX_APP_SLUG",
+  "TABLES_SCHEMA", "TABLES_SQLCL_CONNECTION", "TABLES_EXPECTED_USER", "TABLES_REQUIRED_ROLE",
+  "CODE_SCHEMA", "CODE_SQLCL_CONNECTION", "CODE_EXPECTED_USER", "CODE_REQUIRED_ROLE",
+  "APEX_PARSING_SCHEMA", "APEX_SQLCL_CONNECTION", "APEX_EXPECTED_USER", "APEX_REQUIRED_ROLE",
   "INSTALL_UC_APX", "UC_APX_SKILLS_AGENT"
 )
 foreach ($key in $required) {
@@ -41,12 +45,23 @@ foreach ($key in $required) {
     throw "project environment error: $key is required in $EnvFile"
   }
 }
-if ($env:DB_TARGET_SCHEMA -notmatch '^[A-Z][A-Z0-9_$#]{0,127}$') { throw "DB_TARGET_SCHEMA must be an uppercase Oracle identifier" }
 if ($env:APEX_APP_ID -notmatch '^[1-9][0-9]*$') { throw "APEX_APP_ID must be a positive integer" }
 if ($env:APEX_APP_SLUG -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') { throw "APEX_APP_SLUG contains unsafe path characters" }
-if ($env:SQLCL_CONNECTION -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') { throw "SQLCL_CONNECTION contains unsupported characters" }
-if ($env:DB_EXPECTED_USER -notmatch '^[A-Z][A-Z0-9_$#]{0,127}$') { throw "DB_EXPECTED_USER must be an uppercase Oracle identifier" }
 if ($env:DB_ENVIRONMENT -notin @("development", "test", "staging", "production")) { throw "DB_ENVIRONMENT is invalid" }
 if ($env:INSTALL_UC_APX -notin @("true", "false")) { throw "INSTALL_UC_APX must be true or false" }
 if ($env:UC_APX_SKILLS_AGENT -notin @("universal", "claude-code")) { throw "UC_APX_SKILLS_AGENT is invalid" }
-if ($env:DB_REQUIRED_ROLE -and $env:DB_REQUIRED_ROLE -notmatch '^[A-Z][A-Z0-9_$#]{0,127}$') { throw "DB_REQUIRED_ROLE must be an uppercase Oracle role name" }
+foreach ($key in @("TABLES_SCHEMA", "TABLES_EXPECTED_USER", "CODE_SCHEMA", "CODE_EXPECTED_USER", "APEX_PARSING_SCHEMA", "APEX_EXPECTED_USER")) {
+  if ((Get-Item -LiteralPath "Env:$key").Value -notmatch '^[A-Z][A-Z0-9_$#]{0,127}$') {
+    throw "$key must be an uppercase Oracle identifier"
+  }
+}
+foreach ($key in @("TABLES_SQLCL_CONNECTION", "CODE_SQLCL_CONNECTION", "APEX_SQLCL_CONNECTION")) {
+  if ((Get-Item -LiteralPath "Env:$key").Value -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
+    throw "$key contains unsupported characters"
+  }
+}
+foreach ($key in @("TABLES_REQUIRED_ROLE", "CODE_REQUIRED_ROLE", "APEX_REQUIRED_ROLE")) {
+  if ((Get-Item -LiteralPath "Env:$key").Value -notmatch '^[A-Z][A-Z0-9_$#]{0,127}$') {
+    throw "$key must be an uppercase Oracle role name or NONE"
+  }
+}

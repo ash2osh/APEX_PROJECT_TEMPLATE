@@ -25,16 +25,17 @@ supplemental to the rules below; do not copy existing invariants into it.
 
 ## 1. Project Identity
 
-Copy `.env.example` to the gitignored `.env` and set the project name,
-schema, APEX application, named SQLcl connection, environment classification,
-expected database user, production read-only role, and optional-tool flags.
-Load it only through `scripts/load_env.sh` or `scripts/load_env.ps1`; `.env`
-is parsed as literal data and must never be executed as shell code. Keep
+Use `/init`, `/init <project-name>`, or the `initialize-project` skill to create
+the gitignored `.env`; manual setup may copy `.env.example`. Configure explicit
+tables, code, and APEX parsing-schema profiles. Their schema, SQLcl saved
+connection, expected user, and role values may be identical or independent.
+Load `.env` only through `scripts/load_env.sh` or `scripts/load_env.ps1`; it is
+parsed as literal data and must never be executed as shell code. Keep
 credentials in SQLcl's saved connection store, not in `.env`.
 
 ## 2. Directory Layout
 
-- `apps/<schema>/<app-slug>/` — Oracle APEX applications, exported via
+- `apps/<parsing-schema>/<app-slug>/` — Oracle APEX applications, exported via
   SQLcl's APEXLANG export type (`apex export -exptype APEXLANG`), one
   directory per app, grouped by owning schema. One file per page under
   `pages/`. This is editable project source and is changed in place.
@@ -80,15 +81,16 @@ developer or CI action for application changes.
 - Use a UTF-8 session/JDBC encoding when localized text or generated source
   is involved.
 - Connect only through the exact named saved connection in `.env`. Never
-  infer, guess, or fall back to another connection.
+  infer, guess, or fall back to another connection. Select the explicit
+  tables, code, or APEX profile for the operation.
 - Before any SQL, verify database name, service, session user, and current
   schema with a read-only identity query (see
   `.agents/rules/agent-safety.md`).
-- Production is always read-only. It requires a dedicated non-owner account
-  and the role named by `DB_REQUIRED_ROLE`; the scripts verify both after
-  connecting. If the connection, database, or service name resembles
-  production but `.env` does not classify it as production, stop and ask the
-  user to classify it.
+- Production is always read-only. Each target used requires its configured
+  dedicated non-owner expected user and named required role; the scripts
+  verify both after connecting. If any selected connection, database, or
+  service name resembles production but `.env` does not classify it as
+  production, stop and ask the user to classify it.
 
 ## 5. `.apx` (APEXlang) Delivery Rule
 
@@ -113,6 +115,11 @@ outside their own `CREATE [OR REPLACE]` line.
 | `<PROJECT>_CODE` (example) | Views and packages — compiled/query logic |
 | `<PROJECT>_API` (example) | ORDS REST metadata |
 | `<PROJECT>` (example) | APEX runtime schema — granted access only, owns nothing |
+
+Map these choices into `TABLES_SCHEMA`, `CODE_SCHEMA`, and
+`APEX_PARSING_SCHEMA`. `scripts/backup_db.*` obtains tables through the tables
+profile and views/packages/standalone procedures/functions/triggers through
+the code profile. `scripts/export_apps.*` uses only the APEX profile.
 
 ## 7. Optional Tooling
 

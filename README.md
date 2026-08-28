@@ -45,13 +45,20 @@ never installed.
 ## Instantiating this template
 
 1. Copy or clone this repo to the new project's location.
-2. Copy `.env.example` to `.env` and set the project, schema, application,
-   named SQLcl connection, environment, expected user, production role, and
-   optional-tool values. `.env` is ignored and must not contain credentials.
-3. Fill in `agents.md` §6 (Schema Ownership) with how this project actually
+2. Ask your coding agent to run `/init` or `/init ash` (replace `ash` with
+   your proposed project name). The agent asks for the application and three
+   database target profiles, shows a redacted summary, and creates `.env`
+   only after confirmation. If slash commands are unavailable, ask it to
+   “initialize this project.”
+3. Alternatively, copy `.env.example` to `.env` and set every value manually.
+   `.env` is ignored and must not contain credentials.
+4. Fill in `agents.md` §6 (Schema Ownership) with how this project actually
    splits schemas.
-4. Create the exact SQLcl saved connection named by `SQLCL_CONNECTION`.
-5. Recreate `.claude/settings.local.json` locally (it is intentionally not
+5. Create the exact SQLcl saved connections named by
+   `TABLES_SQLCL_CONNECTION`, `CODE_SQLCL_CONNECTION`, and
+   `APEX_SQLCL_CONNECTION`. The names may all identify the same saved
+   connection or three different ones.
+6. Recreate `.claude/settings.local.json` locally (it is intentionally not
    tracked in this repo — Claude Code treats `settings.local.json` as a
    personal, per-machine file, not something to commit and share). A
    reasonable starting point:
@@ -65,7 +72,7 @@ never installed.
      }
    }
    ```
-6. Run `scripts/export_apps.sh` / `scripts/backup_db.sh` (or the `.ps1`
+7. Run `scripts/export_apps.sh` / `scripts/backup_db.sh` (or the `.ps1`
    equivalents) once you have a real app/schema to export, to populate
    `apps/` and `database/`.
 
@@ -82,11 +89,16 @@ The strict loaders accept only the documented settings, reject missing or
 duplicate keys, and treat every value literally. They never evaluate `.env` as
 code. Credentials stay in SQLcl's saved connection store.
 
+The tables profile exports only table metadata. The code profile exports
+views, packages, standalone procedures/functions, and triggers. The APEX
+profile selects the parsing schema and application export connection. Profiles
+are always explicit but may repeat the same schema, connection, user, and role.
+
 Production requires `DB_ENVIRONMENT=production`, a dedicated non-owner
-`DB_EXPECTED_USER`, and `DB_REQUIRED_ROLE` naming the enabled read-only role.
-The pre-connect guard blocks writes and suspicious connection-name
-misclassification; the SQL scripts verify the real session identity and
-privileges after connecting. See
+expected user, and a named enabled read-only role in every profile used. The
+pre-connect guard blocks writes and suspicious connection-name
+misclassification independently per target; SQL scripts verify the real
+session identity and privileges after connecting. See
 [production database safety](docs/production-database-safety.md).
 The policy intentionally does not grant a parsing-schema or APEX administrator
 login merely to export an app; use the reviewed APEX artifact from
@@ -95,7 +107,7 @@ development/staging as described in that document.
 ## Directory layout
 
 ```
-apps/<schema>/<app-slug>/       Editable Oracle APEX source, APEXLANG format
+apps/<parsing-schema>/<app-slug>/ Editable Oracle APEX source, APEXLANG format
 database/<schema>/              Generated DBMS_METADATA mirror, no table data
 app_context/<app-slug>_<id>/    Durable per-app knowledge base
 ai_generate/YYYY-MM-DD/         AI-generated SQL/PLSQL deployment scripts
@@ -105,8 +117,9 @@ scripts/                        Export/backup automation (.sh + .ps1 pairs)
 .claude/                        Thin Claude-Code-specific pointers into .agents/
 ```
 
-`.agents/skills/` contains the small `install-uc-apx` opt-in skill,
-`sqlcl-mcp-r0`, and the vendored `superpowers/` workflow skills. The
+`.agents/skills/` contains the interactive `initialize-project` skill, the
+small `install-uc-apx` opt-in skill, `sqlcl-mcp-r0`, and the vendored
+`superpowers/` workflow skills. The
 [skills index](.agents/skills/SKILLS.md) describes them. `superpowers/` is a
 vendored, local copy of the [superpowers](https://github.com/obra/superpowers)
 workflow skill library (brainstorming, writing-plans, TDD, code review, etc.

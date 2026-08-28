@@ -32,7 +32,7 @@ skills into the template.
 ## Core commands (when installed)
 
 Run against the configured app directory,
-`apps/$DB_TARGET_SCHEMA/$APEX_APP_SLUG`:
+`apps/$APEX_PARSING_SCHEMA/$APEX_APP_SLUG`:
 
 - `uc-apx overview` — summary of the application.
 - `uc-apx search <term>` — search names, SQL, and PL/SQL across the app.
@@ -50,7 +50,7 @@ Run against the configured app directory,
 ## Separate validation step
 
 ```bash
-uc-apx validate --app-dir "apps/$DB_TARGET_SCHEMA/$APEX_APP_SLUG"
+uc-apx validate --app-dir "apps/$APEX_PARSING_SCHEMA/$APEX_APP_SLUG"
 ```
 
 Validation is useful before handing off an application edit, but it is never

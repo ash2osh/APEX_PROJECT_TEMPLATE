@@ -26,9 +26,11 @@ while IFS= read -r project_env_line || [ -n "$project_env_line" ]; do
   project_env_key="${BASH_REMATCH[1]}"
   project_env_value="${BASH_REMATCH[2]}"
   case "$project_env_key" in
-    PROJECT_NAME|DB_TARGET_SCHEMA|APEX_APP_ID|APEX_APP_SLUG|SQLCL_CONNECTION|\
-    DB_ENVIRONMENT|DB_EXPECTED_USER|DB_REQUIRED_ROLE|INSTALL_UC_APX|\
-    UC_APX_SKILLS_AGENT) ;;
+    PROJECT_NAME|DB_ENVIRONMENT|APEX_APP_ID|APEX_APP_SLUG|\
+    TABLES_SCHEMA|TABLES_SQLCL_CONNECTION|TABLES_EXPECTED_USER|TABLES_REQUIRED_ROLE|\
+    CODE_SCHEMA|CODE_SQLCL_CONNECTION|CODE_EXPECTED_USER|CODE_REQUIRED_ROLE|\
+    APEX_PARSING_SCHEMA|APEX_SQLCL_CONNECTION|APEX_EXPECTED_USER|APEX_REQUIRED_ROLE|\
+    INSTALL_UC_APX|UC_APX_SKILLS_AGENT) ;;
     *)
       project_env_fail "unsupported setting in $PROJECT_ENV_FILE: $project_env_key"
       return 1 2>/dev/null || exit 1
@@ -51,9 +53,11 @@ while IFS= read -r project_env_line || [ -n "$project_env_line" ]; do
 done < "$PROJECT_ENV_FILE"
 
 project_env_required=(
-  PROJECT_NAME DB_TARGET_SCHEMA APEX_APP_ID APEX_APP_SLUG SQLCL_CONNECTION
-  DB_ENVIRONMENT DB_EXPECTED_USER DB_REQUIRED_ROLE INSTALL_UC_APX
-  UC_APX_SKILLS_AGENT
+  PROJECT_NAME DB_ENVIRONMENT APEX_APP_ID APEX_APP_SLUG
+  TABLES_SCHEMA TABLES_SQLCL_CONNECTION TABLES_EXPECTED_USER TABLES_REQUIRED_ROLE
+  CODE_SCHEMA CODE_SQLCL_CONNECTION CODE_EXPECTED_USER CODE_REQUIRED_ROLE
+  APEX_PARSING_SCHEMA APEX_SQLCL_CONNECTION APEX_EXPECTED_USER APEX_REQUIRED_ROLE
+  INSTALL_UC_APX UC_APX_SKILLS_AGENT
 )
 for project_env_key in "${project_env_required[@]}"; do
   project_env_seen_present=false
@@ -69,24 +73,12 @@ for project_env_key in "${project_env_required[@]}"; do
   fi
 done
 
-[[ "$DB_TARGET_SCHEMA" =~ ^[A-Z][A-Z0-9_$#]{0,127}$ ]] || {
-  project_env_fail "DB_TARGET_SCHEMA must be an uppercase Oracle identifier"
-  return 1 2>/dev/null || exit 1
-}
 [[ "$APEX_APP_ID" =~ ^[1-9][0-9]*$ ]] || {
   project_env_fail "APEX_APP_ID must be a positive integer"
   return 1 2>/dev/null || exit 1
 }
 [[ "$APEX_APP_SLUG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || {
   project_env_fail "APEX_APP_SLUG contains unsafe path characters"
-  return 1 2>/dev/null || exit 1
-}
-[[ "$SQLCL_CONNECTION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || {
-  project_env_fail "SQLCL_CONNECTION contains unsupported characters"
-  return 1 2>/dev/null || exit 1
-}
-[[ "$DB_EXPECTED_USER" =~ ^[A-Z][A-Z0-9_$#]{0,127}$ ]] || {
-  project_env_fail "DB_EXPECTED_USER must be an uppercase Oracle identifier"
   return 1 2>/dev/null || exit 1
 }
 case "$DB_ENVIRONMENT" in
@@ -110,10 +102,25 @@ case "$UC_APX_SKILLS_AGENT" in
     return 1 2>/dev/null || exit 1
     ;;
 esac
-if [ -n "${DB_REQUIRED_ROLE:-}" ] && [[ ! "$DB_REQUIRED_ROLE" =~ ^[A-Z][A-Z0-9_$#]{0,127}$ ]]; then
-  project_env_fail "DB_REQUIRED_ROLE must be an uppercase Oracle role name"
-  return 1 2>/dev/null || exit 1
-fi
+for project_env_key in TABLES_SCHEMA TABLES_EXPECTED_USER CODE_SCHEMA \
+  CODE_EXPECTED_USER APEX_PARSING_SCHEMA APEX_EXPECTED_USER; do
+  if [[ ! "${!project_env_key}" =~ ^[A-Z][A-Z0-9_$#]{0,127}$ ]]; then
+    project_env_fail "$project_env_key must be an uppercase Oracle identifier"
+    return 1 2>/dev/null || exit 1
+  fi
+done
+for project_env_key in TABLES_SQLCL_CONNECTION CODE_SQLCL_CONNECTION APEX_SQLCL_CONNECTION; do
+  if [[ ! "${!project_env_key}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    project_env_fail "$project_env_key contains unsupported characters"
+    return 1 2>/dev/null || exit 1
+  fi
+done
+for project_env_key in TABLES_REQUIRED_ROLE CODE_REQUIRED_ROLE APEX_REQUIRED_ROLE; do
+  if [[ ! "${!project_env_key}" =~ ^[A-Z][A-Z0-9_$#]{0,127}$ ]]; then
+    project_env_fail "$project_env_key must be an uppercase Oracle role name or NONE"
+    return 1 2>/dev/null || exit 1
+  fi
+done
 
 unset project_env_line project_env_key project_env_value project_env_required
 unset project_env_seen_keys project_env_seen_key project_env_seen_present

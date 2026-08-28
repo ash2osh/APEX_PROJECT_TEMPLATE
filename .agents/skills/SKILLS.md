@@ -4,6 +4,12 @@ This file indexes the project-local skills. `.claude/skills/<skill-name>/`
 contains thin discovery pointers; canonical content lives under
 `.agents/skills/`.
 
+## Project setup
+
+| Skill | Use when |
+|---|---|
+| [initialize-project](initialize-project/SKILL.md) | The user invokes `/init`, `/init <project-name>`, `$initialize-project`, or asks to initialize a cloned template. |
+
 ## Optional `uc-apx`
 
 | Skill | Use when |
