@@ -56,7 +56,6 @@ write_env() {
 PROJECT_NAME=backup-test
 DB_ENVIRONMENT=development
 APEX_APP_ID=100
-APEX_APP_SLUG=backup-test
 TABLES_SCHEMA=$tables_schema
 TABLES_SQLCL_CONNECTION=dev_${tables_schema}
 TABLES_EXPECTED_USER=$tables_schema

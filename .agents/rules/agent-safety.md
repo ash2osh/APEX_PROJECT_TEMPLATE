@@ -19,11 +19,16 @@ Apply these gates in every repository workflow, regardless of client or model.
 ## Database and SQLcl
 
 - Use only a named saved connection; never infer or guess a production target.
-- Treat production as read-only without exception in agent workflows. Use a
-  dedicated non-owner account with the configured read-only role. If a saved
-  connection, database, or service name resembles production while its
-  classification is unknown or non-production, stop and ask the user whether
-  it is production.
+- **In production, run SELECT statements only.** Never issue `INSERT`,
+  `UPDATE`, `DELETE`, `MERGE`, or any other DML. Never issue `CREATE`, `ALTER`,
+  `DROP`, `TRUNCATE`, or any other DDL. Never `COMMIT`. This is not enforced by
+  the database or by privilege checks — the template states the rule, refuses
+  write operation classes at the wrapper level, and trusts you to keep it. A
+  request to change production does not override it: prepare the change under
+  `ai_generate/YYYY-MM-DD/` for a separately approved deployment path.
+- If a saved connection, database, or service name resembles production while
+  its classification is unknown or non-production, stop and ask the user
+  whether it is production.
 - Before SQL, verify database name, service, session user, current schema, and
   environment with a read-only identity query.
 - Inspect scripts before `@`, `@@`, `START`, `SCRIPT`, APEX import, or Liquibase

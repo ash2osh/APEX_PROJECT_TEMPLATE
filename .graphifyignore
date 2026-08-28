@@ -1,7 +1,10 @@
 scratch/
 
-# Generated backup-driver helper; keep the canonical .sql sources it's spooled from.
-scripts/_backup_db_driver.sql
+# Generated backup-driver helpers; keep the canonical .sql sources they are
+# spooled from. They are written under the staging directory in scratch/, so
+# the entry above already covers them; this is belt-and-braces for a driver
+# ever spooled from the repository root.
+scripts/_backup_db_driver_*.sql
 
 **/export.log
 **/export_err.log

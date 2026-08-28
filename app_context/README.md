@@ -13,7 +13,7 @@ patterns, its known bugs and workarounds.
 One folder per application:
 
 ```
-app_context/<app-slug>_<app-id>/
+app_context/<app-id>/
   context.md          # required — see template below
   1-pages/             # optional — one file per page, only when a page is
                         # complex enough to need its own notes
@@ -27,8 +27,8 @@ does not need to exist before then.
 
 ## Rule
 
-Before touching an app under `apps/<parsing-schema>/<app-slug>/`, check whether
-`app_context/<app-slug>_<app-id>/context.md` already exists and
+Before touching an app under `apps/<parsing-schema>/<app-id>/`, check whether
+`app_context/<app-id>/context.md` already exists and
 read it first — it may already document the exact pattern, bug, or
 constraint you're about to rediscover. After resolving a non-trivial issue,
 or establishing knowledge about the app that would save real time next
@@ -40,7 +40,7 @@ speculation).
 ## `context.md` template
 
 ```markdown
-# <app-slug> (app <app-id>)
+# <application name> (app <app-id>)
 
 ## Purpose
 

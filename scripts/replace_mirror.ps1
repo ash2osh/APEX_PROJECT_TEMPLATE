@@ -1,3 +1,4 @@
+#Requires -Version 5.1
 # Replace one generated mirror with a completed staging directory.
 param(
   [Parameter(Mandatory = $true)][string]$StagedDir,
@@ -64,7 +65,10 @@ $destinationPath = Join-Path $resolvedDestinationParent (Split-Path -Leaf $desti
 if (-not $destinationPath.StartsWith($repoRoot + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
   throw "resolved destination escaped the repository: $destinationPath"
 }
-$canonicalRelativeDestination = $destinationPath.Substring($repoRoot.Length).TrimStart([char[]]@('/', '\\'))
+# Single-quoted PowerShell strings do not process escapes, so the separators
+# are written as one character each: '\\' would be a two-character string and
+# fail to cast to [char].
+$canonicalRelativeDestination = $destinationPath.Substring($repoRoot.Length).TrimStart([char[]]@('/', '\'))
 $canonicalDestinationParts = $canonicalRelativeDestination -split '[\\/]'
 $canonicalApproved = ($canonicalDestinationParts[0] -eq "database" -and $canonicalDestinationParts.Count -eq 2) -or
   ($canonicalDestinationParts[0] -eq "apps" -and $canonicalDestinationParts.Count -eq 3)
@@ -82,8 +86,15 @@ if (Test-Path -LiteralPath $backupPath) {
 
 $lockRoot = Join-Path $scratchRoot ".mirror-locks"
 New-Item -ItemType Directory -Force -Path $lockRoot | Out-Null
-$hashBytes = [System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($canonicalRelativeDestination))
-$lockName = ([System.Convert]::ToHexString($hashBytes)).Substring(0, 16) + ".lock"
+# SHA256::HashData and Convert::ToHexString are .NET 5+, so they are missing on
+# Windows PowerShell 5.1. Create()/ComputeHash and BitConverter work on both.
+$sha256 = [System.Security.Cryptography.SHA256]::Create()
+try {
+  $hashBytes = $sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($canonicalRelativeDestination))
+} finally {
+  $sha256.Dispose()
+}
+$lockName = ([System.BitConverter]::ToString($hashBytes) -replace '-', '').Substring(0, 16) + ".lock"
 $lockPath = Join-Path $lockRoot $lockName
 try {
   $lockHandle = [System.IO.File]::Open($lockPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)

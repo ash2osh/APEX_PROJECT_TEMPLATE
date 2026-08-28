@@ -1,3 +1,4 @@
+#Requires -Version 5.1
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $testRoot = Join-Path $repoRoot "scratch/template-ps-$([Guid]::NewGuid().ToString('N'))"
@@ -36,12 +37,11 @@ try {
   }
   Assert-True $rejected "dot-dot destination was accepted"
 
-  $envFile = Join-Path $testRoot "project.env"
+  $baseEnvFile = Join-Path $testRoot "project.env"
   $envText = @'
 PROJECT_NAME=$(throw should-not-run)
 DB_ENVIRONMENT=development
 APEX_APP_ID=100
-APEX_APP_SLUG=sample-app
 TABLES_SCHEMA=SAMPLE_DATA
 TABLES_SQLCL_CONNECTION=dev1_SAMPLE_DATA
 TABLES_EXPECTED_USER=SAMPLE_DATA
@@ -57,8 +57,8 @@ APEX_REQUIRED_ROLE=NONE
 INSTALL_UC_APX=false
 UC_APX_SKILLS_AGENT=universal
 '@
-  [System.IO.File]::WriteAllText($envFile, $envText)
-  . (Join-Path $PSScriptRoot "load_env.ps1") -EnvFile $envFile
+  [System.IO.File]::WriteAllText($baseEnvFile, $envText)
+  . (Join-Path $PSScriptRoot "load_env.ps1") -EnvFile $baseEnvFile
   Assert-True ($env:PROJECT_NAME -eq '$(throw should-not-run)') ".env literal value was changed or executed"
 
   $missingRoleFile = Join-Path $testRoot "missing-role.env"
@@ -73,7 +73,7 @@ UC_APX_SKILLS_AGENT=universal
   Assert-True $rejected "environment loader accepted an inherited value for a missing setting"
 
   $legacyFile = Join-Path $testRoot "legacy.env"
-  [System.IO.File]::WriteAllText($legacyFile, $envText + "DB_TARGET_SCHEMA=LEGACY`n")
+  [System.IO.File]::WriteAllText($legacyFile, $envText + "`nDB_TARGET_SCHEMA=LEGACY`n")
   $rejected = $false
   try {
     . (Join-Path $PSScriptRoot "load_env.ps1") -EnvFile $legacyFile
@@ -82,7 +82,7 @@ UC_APX_SKILLS_AGENT=universal
   }
   Assert-True $rejected "environment loader accepted a legacy single-profile setting"
 
-  $env:PROJECT_ENV_FILE = $envFile
+  $env:PROJECT_ENV_FILE = $baseEnvFile
   foreach ($target in @("tables", "code", "apex")) {
     & (Join-Path $PSScriptRoot "check_db_target.ps1") -Operation read -Target $target
   }
@@ -124,33 +124,41 @@ UC_APX_SKILLS_AGENT=universal
   }
   Assert-True $rejected "production write operation was accepted"
 
-  $productionNoRoleFile = Join-Path $testRoot "production-no-role.env"
-  $productionNoRoleText = $envText.Replace("DB_ENVIRONMENT=development", "DB_ENVIRONMENT=production").Replace(
-    "APEX_SQLCL_CONNECTION=dev1_SAMPLE_APEX", "APEX_SQLCL_CONNECTION=primary-prod-SAMPLE_APEX").Replace(
-    "APEX_EXPECTED_USER=SAMPLE_APEX", "APEX_EXPECTED_USER=SAMPLE_APEX_AGENT_RO")
-  [System.IO.File]::WriteAllText($productionNoRoleFile, $productionNoRoleText)
-  $env:PROJECT_ENV_FILE = $productionNoRoleFile
-  $rejected = $false
-  try {
-    & (Join-Path $PSScriptRoot "check_db_target.ps1") -Operation read -Target apex
-  } catch {
-    $rejected = $true
-  }
-  Assert-True $rejected "production APEX target without a role was accepted"
-
+  # Production is read-only by instruction, not by privilege audit. A role-less
+  # owner login is accepted for reads, refused for writes, and told the rule.
   $productionOwnerFile = Join-Path $testRoot "production-owner.env"
   $productionOwnerText = $envText.Replace("DB_ENVIRONMENT=development", "DB_ENVIRONMENT=production").Replace(
-    "CODE_SQLCL_CONNECTION=dev1_SAMPLE_CODE", "CODE_SQLCL_CONNECTION=primary-prod-SAMPLE_CODE").Replace(
-    "CODE_REQUIRED_ROLE=NONE", "CODE_REQUIRED_ROLE=SAMPLE_CODE_PROD_RO")
+    "CODE_SQLCL_CONNECTION=dev1_SAMPLE_CODE", "CODE_SQLCL_CONNECTION=primary-prod-SAMPLE_CODE")
   [System.IO.File]::WriteAllText($productionOwnerFile, $productionOwnerText)
   $env:PROJECT_ENV_FILE = $productionOwnerFile
+  $notice = (& (Join-Path $PSScriptRoot "check_db_target.ps1") -Operation read -Target code) 3>&1 | Out-String
+  Assert-True ($notice -match "SELECT statements only") "production read did not print the SELECT-only instruction"
+  Assert-True ($notice -match "Do NOT run INSERT") "production notice does not name DML"
+  Assert-True ($notice -match "Do NOT run CREATE") "production notice does not name DDL"
   $rejected = $false
   try {
-    & (Join-Path $PSScriptRoot "check_db_target.ps1") -Operation read -Target code
+    & (Join-Path $PSScriptRoot "check_db_target.ps1") -Operation write -Target code
   } catch {
     $rejected = $true
   }
-  Assert-True $rejected "production owner account was accepted for the code target"
+  Assert-True $rejected "production write operation was accepted"
+
+  $verifySql = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot "verify_db_access.sql"))
+  Assert-True ($verifySql -match "SELECT statements only") "post-connect production instruction is missing"
+  Assert-True (-not ($verifySql -match "session_privs|session_roles|user_tab_privs_recd|role_tab_privs")) `
+    "verify_db_access.sql still audits privileges"
+  Assert-True (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot "audit_production_access.sql"))) `
+    "the removed privilege audit script is back"
+
+  $legacySlugFile = Join-Path $testRoot "legacy-slug.env"
+  [System.IO.File]::WriteAllText($legacySlugFile, $envText + "`nAPEX_APP_SLUG=sample-app`n")
+  $rejected = $false
+  try {
+    . (Join-Path $PSScriptRoot "load_env.ps1") -EnvFile $legacySlugFile
+  } catch {
+    $rejected = $true
+  }
+  Assert-True $rejected "environment loader accepted the legacy APEX_APP_SLUG setting"
 
   Write-Host "PASS: native PowerShell template checks"
 } finally {

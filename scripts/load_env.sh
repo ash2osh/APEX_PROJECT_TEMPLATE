@@ -26,7 +26,7 @@ while IFS= read -r project_env_line || [ -n "$project_env_line" ]; do
   project_env_key="${BASH_REMATCH[1]}"
   project_env_value="${BASH_REMATCH[2]}"
   case "$project_env_key" in
-    PROJECT_NAME|DB_ENVIRONMENT|APEX_APP_ID|APEX_APP_SLUG|\
+    PROJECT_NAME|DB_ENVIRONMENT|APEX_APP_ID|\
     TABLES_SCHEMA|TABLES_SQLCL_CONNECTION|TABLES_EXPECTED_USER|TABLES_REQUIRED_ROLE|\
     CODE_SCHEMA|CODE_SQLCL_CONNECTION|CODE_EXPECTED_USER|CODE_REQUIRED_ROLE|\
     APEX_PARSING_SCHEMA|APEX_SQLCL_CONNECTION|APEX_EXPECTED_USER|APEX_REQUIRED_ROLE|\
@@ -53,7 +53,7 @@ while IFS= read -r project_env_line || [ -n "$project_env_line" ]; do
 done < "$PROJECT_ENV_FILE"
 
 project_env_required=(
-  PROJECT_NAME DB_ENVIRONMENT APEX_APP_ID APEX_APP_SLUG
+  PROJECT_NAME DB_ENVIRONMENT APEX_APP_ID
   TABLES_SCHEMA TABLES_SQLCL_CONNECTION TABLES_EXPECTED_USER TABLES_REQUIRED_ROLE
   CODE_SCHEMA CODE_SQLCL_CONNECTION CODE_EXPECTED_USER CODE_REQUIRED_ROLE
   APEX_PARSING_SCHEMA APEX_SQLCL_CONNECTION APEX_EXPECTED_USER APEX_REQUIRED_ROLE
@@ -75,10 +75,6 @@ done
 
 [[ "$APEX_APP_ID" =~ ^[1-9][0-9]*$ ]] || {
   project_env_fail "APEX_APP_ID must be a positive integer"
-  return 1 2>/dev/null || exit 1
-}
-[[ "$APEX_APP_SLUG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || {
-  project_env_fail "APEX_APP_SLUG contains unsafe path characters"
   return 1 2>/dev/null || exit 1
 }
 case "$DB_ENVIRONMENT" in

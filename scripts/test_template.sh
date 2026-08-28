@@ -147,7 +147,6 @@ cat > "$ENV_FILE" <<EOF
 PROJECT_NAME=\$(touch $INJECTION_MARKER)
 DB_ENVIRONMENT=development
 APEX_APP_ID=100
-APEX_APP_SLUG=sample-app
 TABLES_SCHEMA=SAMPLE_DATA
 TABLES_SQLCL_CONNECTION=dev1_SAMPLE_DATA
 TABLES_EXPECTED_USER=SAMPLE_DATA
@@ -221,24 +220,44 @@ if PROJECT_ENV_FILE="$NUMBERED_PROD_ENV_FILE" "$REPO_ROOT/scripts/check_db_targe
   fail "numbered production-like connection name was accepted as development"
 fi
 
-PROD_NO_ROLE_ENV_FILE="$TEST_ROOT/production-no-role.env"
-sed \
-  -e 's/DB_ENVIRONMENT=development/DB_ENVIRONMENT=production/' \
-  -e 's/APEX_SQLCL_CONNECTION=dev1_SAMPLE_APEX/APEX_SQLCL_CONNECTION=primary-prod-SAMPLE_APEX/' \
-  -e 's/APEX_EXPECTED_USER=SAMPLE_APEX/APEX_EXPECTED_USER=SAMPLE_APEX_AGENT_RO/' \
-  "$ENV_FILE" > "$PROD_NO_ROLE_ENV_FILE"
-if PROJECT_ENV_FILE="$PROD_NO_ROLE_ENV_FILE" "$REPO_ROOT/scripts/check_db_target.sh" read apex; then
-  fail "production connection without a read-only role was accepted"
-fi
-
+# Production is read-only by instruction, not by privilege audit. A role-less
+# owner login is accepted for reads, refused for writes, and told the rule.
 PROD_OWNER_ENV_FILE="$TEST_ROOT/production-owner.env"
 sed \
   -e 's/DB_ENVIRONMENT=development/DB_ENVIRONMENT=production/' \
   -e 's/CODE_SQLCL_CONNECTION=dev1_SAMPLE_CODE/CODE_SQLCL_CONNECTION=primary-prod-SAMPLE_CODE/' \
-  -e 's/CODE_REQUIRED_ROLE=NONE/CODE_REQUIRED_ROLE=SAMPLE_CODE_PROD_RO/' \
   "$ENV_FILE" > "$PROD_OWNER_ENV_FILE"
-if PROJECT_ENV_FILE="$PROD_OWNER_ENV_FILE" "$REPO_ROOT/scripts/check_db_target.sh" read code; then
-  fail "production owner account was accepted for the code target"
+PROD_NOTICE="$(PROJECT_ENV_FILE="$PROD_OWNER_ENV_FILE" "$REPO_ROOT/scripts/check_db_target.sh" read code 2>&1)" \
+  || fail "production owner account without a role was rejected for reads"
+grep -q 'SELECT statements only' <<< "$PROD_NOTICE" \
+  || fail "production read did not print the SELECT-only instruction"
+grep -q 'Do NOT run INSERT' <<< "$PROD_NOTICE" || fail "production notice does not name DML"
+grep -q 'Do NOT run CREATE' <<< "$PROD_NOTICE" || fail "production notice does not name DDL"
+if PROJECT_ENV_FILE="$PROD_OWNER_ENV_FILE" "$REPO_ROOT/scripts/check_db_target.sh" write code; then
+  fail "production write operation was accepted"
+fi
+
+# The removed production privilege machinery must not creep back in.
+! grep -qE '\-200(03|04|05|06|07|08|10|11|12|13)' "$REPO_ROOT/scripts/verify_db_access.sql" \
+  || fail "removed production privilege checks are still present"
+! grep -qE 'session_privs|session_roles|user_tab_privs_recd|role_tab_privs|user_sys_privs|user_role_privs|user_objects' \
+  "$REPO_ROOT/scripts/verify_db_access.sql" \
+  || fail "verify_db_access.sql still audits privileges"
+! grep -q 'non-owner' "$REPO_ROOT/scripts/check_db_target.sh" \
+  || fail "pre-connect non-owner gate is still present"
+grep -q 'SELECT statements only' "$REPO_ROOT/scripts/verify_db_access.sql" \
+  || fail "post-connect production instruction is missing"
+test ! -e "$REPO_ROOT/scripts/audit_production_access.sql" \
+  || fail "the removed privilege audit script is back"
+for RULE_FILE in "$REPO_ROOT/.agents/rules/agent-safety.md" "$REPO_ROOT/agents.md"; do
+  grep -q 'SELECT statements only' "$RULE_FILE" \
+    || fail "production read-only instruction is missing from $RULE_FILE"
+done
+
+LEGACY_SLUG_ENV_FILE="$TEST_ROOT/legacy-slug.env"
+printf '%s\n' "$(cat "$ENV_FILE")" 'APEX_APP_SLUG=sample-app' > "$LEGACY_SLUG_ENV_FILE"
+if bash -c 'source "$1" "$2"' _ "$REPO_ROOT/scripts/load_env.sh" "$LEGACY_SLUG_ENV_FILE"; then
+  fail "environment loader accepted the legacy APEX_APP_SLUG setting"
 fi
 
 test -f "$REPO_ROOT/.agents/skills/install-uc-apx/SKILL.md" || fail "conditional uc-apx installer skill is missing"
@@ -275,10 +294,11 @@ grep -q 'check_db_target.sh" read apex' "$REPO_ROOT/scripts/export_apps.sh" || f
 grep -q 'application.apx' "$REPO_ROOT/scripts/export_apps.sh" || fail "APEX export does not require application.apx"
 grep -q 'apexlang.json' "$REPO_ROOT/scripts/export_apps.sh" || fail "APEX export does not require .apex/apexlang.json"
 ! grep -Eqi '(uc-apx|apex)[[:space:]]+validate' "$REPO_ROOT/scripts/export_apps.sh" "$REPO_ROOT/scripts/export_apps.ps1" "$REPO_ROOT/scripts/export_apps.sql" || fail "APEX export invokes validation"
-grep -q 'session_roles' "$REPO_ROOT/scripts/verify_db_access.sql" || fail "post-connect production role verification is missing"
-grep -q 'session_privs' "$REPO_ROOT/scripts/verify_db_access.sql" || fail "post-connect production privilege verification is missing"
+grep -q 'SESSION_USER' "$REPO_ROOT/scripts/verify_db_access.sql" || fail "post-connect session identity check is missing"
+grep -q '\-20001' "$REPO_ROOT/scripts/verify_db_access.sql" || fail "post-connect expected-user check is missing"
 
 "$REPO_ROOT/scripts/test_backup_orchestration.sh"
+"$REPO_ROOT/scripts/test_export_orchestration.sh"
 
 LINK_FIXTURE="$TEST_ROOT/link-fixture.md"
 printf '[missing](not-here.md)\n' > "$LINK_FIXTURE"

@@ -1,3 +1,4 @@
+#Requires -Version 5.1
 # Refresh table and code DBMS_METADATA mirrors through independent read targets.
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path

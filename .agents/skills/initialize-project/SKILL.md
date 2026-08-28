@@ -27,6 +27,13 @@ The legacy keys `DB_TARGET_SCHEMA`, `SQLCL_CONNECTION`, `DB_EXPECTED_USER`, and
 `DB_REQUIRED_ROLE` may be offered as defaults for all three profiles, but never
 silently migrate them and never write them to the new file.
 
+`APEX_APP_SLUG` is also a legacy key. An existing `.env` that still sets it
+will now be rejected by the loaders as an unsupported setting. Point this out,
+explain that mirrors are named by `APEX_APP_ID`, and note that the app's
+directory under `apps/<parsing-schema>/` needs renaming from the old slug to
+the id — the next export would otherwise create a second directory alongside
+it. Never write `APEX_APP_SLUG` to the new file.
+
 ## Conversation
 
 Treat an argument supplied by `/init <name>` as proposed project-name data, not
@@ -35,9 +42,10 @@ Collect values in this order:
 
 1. Project name, using the command argument as the default when present.
 2. Environment: `development`, `test`, `staging`, or `production`.
-3. Positive numeric APEX application ID and filesystem-safe application slug.
-4. Tables schema, SQLcl saved-connection name, expected session user, and—when
-   production—the required read-only role.
+3. Positive numeric APEX application ID. There is no separate directory name
+   to collect: the export mirror is named by this id.
+4. Tables schema, SQLcl saved-connection name, and expected session user. Ask
+   for a role only if the user wants to record one; otherwise write `NONE`.
 5. Code schema, then whether its connection/account/role should reuse the
    tables values. Ask for independent values when it should not.
 6. APEX parsing schema, then whether its connection/account/role should reuse
@@ -47,11 +55,17 @@ Collect values in this order:
 
 Schemas, users, and roles are uppercase Oracle identifiers matching
 `[A-Z][A-Z0-9_$#]{0,127}`. Saved-connection names match
-`[A-Za-z0-9][A-Za-z0-9._-]*`; the app slug matches
-`[A-Za-z0-9][A-Za-z0-9._-]*`. Project names must be one line. In production,
-each expected user must differ from its target schema and each required role
-must be a named role rather than `NONE`. Outside production, use `NONE` when no
-role is required.
+`[A-Za-z0-9][A-Za-z0-9._-]*`. The application id matches `[1-9][0-9]*`.
+Project names must be one line. `*_REQUIRED_ROLE` is declarative only — nothing
+verifies it — so `NONE` is valid in every environment, including production.
+Only ask for a role name when the user volunteers one.
+
+When the environment is `production`, state the read-only rule plainly and
+confirm the user accepts it: SELECT statements only, no DML, no DDL, no
+`COMMIT`. Say that the template does not enforce this through privileges — it
+refuses write operation classes and prints the rule, and the rest is the
+client's contract. Record the user's choice; do not refuse it, and do not
+demand a dedicated account or a named role.
 
 ## Confirmation and write
 
@@ -67,7 +81,6 @@ this order:
 PROJECT_NAME=<project-name>
 DB_ENVIRONMENT=<environment>
 APEX_APP_ID=<positive-id>
-APEX_APP_SLUG=<safe-slug>
 
 TABLES_SCHEMA=<schema>
 TABLES_SQLCL_CONNECTION=<saved-connection>

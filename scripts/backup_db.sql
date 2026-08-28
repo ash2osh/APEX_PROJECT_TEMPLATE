@@ -1,6 +1,6 @@
 -- Export schema metadata only (never table data). Arguments are supplied by
 -- the validated shell/PowerShell wrappers: schema, scope, environment,
--- expected session user, and required production read-only role.
+-- expected session user, and declared role.
 SET DEFINE ON
 DEFINE target_schema = '&1'
 DEFINE object_scope = '&2'

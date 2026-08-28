@@ -1,5 +1,9 @@
--- Shared read-only identity and production-role gate. The calling script must
--- define target_schema, db_environment, expected_user, and required_role.
+-- Shared identity check. The calling script must define target_schema,
+-- db_environment, expected_user, and required_role.
+--
+-- This script confirms *who and where* the session is. It does not audit
+-- privileges. Production safety in this template is an instruction to the
+-- client, not a privilege gate: run SELECT statements only, never DML or DDL.
 SET SERVEROUTPUT ON
 
 SELECT 'SQLcl target: session_user=' || SYS_CONTEXT('USERENV', 'SESSION_USER')
@@ -39,87 +43,23 @@ BEGIN
       'Database/service identity resembles production; ask the user to classify it before continuing');
   END IF;
 
-  IF v_environment = 'production' THEN
-    IF v_session_user = v_target_schema THEN
-      RAISE_APPLICATION_ERROR(-20003,
-        'Production must use a dedicated non-owner read-only account');
-    END IF;
-
-    IF v_required_role IS NULL OR v_required_role = 'NONE' THEN
-      RAISE_APPLICATION_ERROR(-20010,
-        'Production requires a named read-only role');
-    END IF;
-
-    SELECT COUNT(*) INTO v_count FROM session_roles WHERE role = v_required_role;
-    IF v_count = 0 THEN
-      RAISE_APPLICATION_ERROR(-20004,
-        'Required production read-only role is not enabled: ' || v_required_role);
-    END IF;
-
-    SELECT COUNT(*) INTO v_count FROM user_objects;
-    IF v_count > 0 THEN
-      RAISE_APPLICATION_ERROR(-20005,
-        'Production read-only account owns database objects');
-    END IF;
-
-    SELECT COUNT(*) INTO v_count
-    FROM user_role_privs
-    WHERE admin_option = 'YES';
-    IF v_count > 0 THEN
-      RAISE_APPLICATION_ERROR(-20011,
-        'Production session user has a role with ADMIN OPTION');
-    END IF;
-
-    SELECT COUNT(*) INTO v_count
-    FROM user_sys_privs
-    WHERE admin_option = 'YES';
-    IF v_count > 0 THEN
-      RAISE_APPLICATION_ERROR(-20012,
-        'Production session user has a system privilege with ADMIN OPTION');
-    END IF;
-
-    SELECT COUNT(*) INTO v_count
-    FROM user_tab_privs_recd
-    WHERE grantable = 'YES';
-    IF v_count > 0 THEN
-      RAISE_APPLICATION_ERROR(-20013,
-        'Production session user has an object privilege with GRANT OPTION');
-    END IF;
-
-    SELECT COUNT(*) INTO v_count
-    FROM session_privs
-    WHERE privilege NOT IN (
-      'CREATE SESSION', 'READ ANY TABLE', 'SELECT ANY TABLE',
-      'SELECT ANY DICTIONARY', 'SELECT ANY SEQUENCE', 'SELECT ANY TRANSACTION'
-    );
-    IF v_count > 0 THEN
-      RAISE_APPLICATION_ERROR(-20006,
-        'Production session has system privileges outside the read-only allowlist');
-    END IF;
-
-    SELECT COUNT(*) INTO v_count
-    FROM user_tab_privs_recd
-    WHERE privilege IN (
-      'ALTER', 'DELETE', 'EXECUTE', 'INDEX', 'INSERT', 'REFERENCES', 'UPDATE'
-    );
-    IF v_count > 0 THEN
-      RAISE_APPLICATION_ERROR(-20007,
-        'Production session user has direct write-capable object privileges');
-    END IF;
-
-    SELECT COUNT(*) INTO v_count
-    FROM role_tab_privs
-    WHERE privilege IN (
-      'ALTER', 'DELETE', 'EXECUTE', 'INDEX', 'INSERT', 'REFERENCES', 'UPDATE'
-    )
-      AND role IN (SELECT role FROM session_roles);
-    IF v_count > 0 THEN
-      RAISE_APPLICATION_ERROR(-20008,
-        'An enabled production role has write-capable object privileges');
-    END IF;
-  ELSIF v_expected_user = v_target_schema AND v_current_schema != v_target_schema THEN
+  IF v_expected_user = v_target_schema AND v_current_schema != v_target_schema THEN
     RAISE_APPLICATION_ERROR(-20009,
       'Expected current schema ' || v_target_schema || ' but found ' || v_current_schema);
+  END IF;
+
+  IF v_environment = 'production' THEN
+    DBMS_OUTPUT.PUT_LINE('****************************************************************');
+    DBMS_OUTPUT.PUT_LINE('*  PRODUCTION SESSION - READ ONLY                              *');
+    DBMS_OUTPUT.PUT_LINE('*                                                              *');
+    DBMS_OUTPUT.PUT_LINE('*  Run SELECT statements only.                                 *');
+    DBMS_OUTPUT.PUT_LINE('*  Do NOT run INSERT, UPDATE, DELETE, MERGE, or any other DML. *');
+    DBMS_OUTPUT.PUT_LINE('*  Do NOT run CREATE, ALTER, DROP, TRUNCATE, or any other DDL. *');
+    DBMS_OUTPUT.PUT_LINE('*  Do NOT COMMIT. Prepare changes for an approved deployment.  *');
+    DBMS_OUTPUT.PUT_LINE('*                                                              *');
+    DBMS_OUTPUT.PUT_LINE('*  This is not enforced by the database. It is your contract.  *');
+    DBMS_OUTPUT.PUT_LINE('*  declared role: ' || RPAD(NVL(v_required_role, 'NONE'), 44) || '*');
+    DBMS_OUTPUT.PUT_LINE('****************************************************************');
   END IF;
 END;
 /

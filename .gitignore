@@ -2,7 +2,15 @@
 scratch/
 
 # Per-clone project configuration. Credentials stay in SQLcl's saved store.
+# The .env.* form covers the per-app files a multi-application repo selects
+# with PROJECT_ENV_FILE, while keeping the tracked .env.example.
 .env
+.env.*
+!.env.example
+
+# Personal, per-machine Claude Code settings. Claude Code treats this file as
+# local state, not something to share; it must not be committed from a clone.
+.claude/settings.local.json
 
 # Export log files
 **/export.log

@@ -37,6 +37,38 @@ jobs:
           }
           if ($failed) { exit 1 }
 
+      # Parsing cannot catch a method that only exists on newer .NET, so check
+      # the scripts against a real Windows PowerShell 5.1 compatibility profile.
+      - name: Check Windows PowerShell 5.1 compatibility
+        shell: pwsh
+        run: |
+          Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -AllowClobber
+          $profileName = 'win-48_x64_10.0.17763.0_5.1.17763.316_x64_4.0.30319.42000_framework'
+          $settings = @{
+            IncludeRules = @('PSUseCompatibleCommands', 'PSUseCompatibleTypes', 'PSUseCompatibleSyntax')
+            Rules = @{
+              PSUseCompatibleCommands = @{ Enable = $true; TargetProfiles = @($profileName) }
+              PSUseCompatibleTypes    = @{ Enable = $true; TargetProfiles = @($profileName) }
+              PSUseCompatibleSyntax   = @{ Enable = $true; TargetVersions = @('5.1', '7.0') }
+            }
+          }
+          $findings = @()
+          Get-ChildItem -Path scripts -Filter *.ps1 | ForEach-Object {
+            $findings += Invoke-ScriptAnalyzer -Path $_.FullName -Settings $settings
+          }
+          if ($findings.Count -gt 0) {
+            $findings | ForEach-Object { Write-Host "::error file=$($_.ScriptPath),line=$($_.Line)::$($_.Message)" }
+            exit 1
+          }
+          Write-Host "No Windows PowerShell 5.1 compatibility findings"
+
+      # ubuntu-latest ships pwsh, so run the native suite here as well as on
+      # Windows. It exercises load_env.ps1 and check_db_target.ps1, which the
+      # bash suite never touches.
+      - name: Run native PowerShell checks
+        shell: pwsh
+        run: ./scripts/test_template.ps1
+
   windows:
     runs-on: windows-latest
     steps:

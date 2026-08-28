@@ -1,6 +1,6 @@
 -- Export one APEX application as APEXlang. Arguments are supplied by the
 -- validated shell/PowerShell wrappers: schema, app id, environment,
--- expected session user, required production role.
+-- expected session user, declared role.
 SET DEFINE ON
 DEFINE target_schema = '&1'
 DEFINE app_id = '&2'

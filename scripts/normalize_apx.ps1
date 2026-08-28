@@ -1,3 +1,4 @@
+#Requires -Version 5.1
 # Normalize *.apx files under the given directory to LF line endings with
 # exactly one trailing newline. This script only changes the files in the
 # supplied directory and never consults or modifies Git.

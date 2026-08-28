@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 # Pre-connect environment classification. Database identity is verified in SQL.
+#
+# Production safety in this template is an instruction to the client, not a
+# privilege audit: read targets are allowed, write operation classes are
+# refused, and the operator is told to run SELECT statements only.
 set -euo pipefail
 
 OPERATION="${1:?usage: check_db_target.sh <read|write> <tables|code|apex>}"
@@ -14,27 +18,9 @@ case "$OPERATION" in
 esac
 
 case "$TARGET" in
-  tables)
-    TARGET_SCHEMA="$TABLES_SCHEMA"
-    TARGET_CONNECTION="$TABLES_SQLCL_CONNECTION"
-    TARGET_EXPECTED_USER="$TABLES_EXPECTED_USER"
-    TARGET_REQUIRED_ROLE="$TABLES_REQUIRED_ROLE"
-    TARGET_ROLE_KEY=TABLES_REQUIRED_ROLE
-    ;;
-  code)
-    TARGET_SCHEMA="$CODE_SCHEMA"
-    TARGET_CONNECTION="$CODE_SQLCL_CONNECTION"
-    TARGET_EXPECTED_USER="$CODE_EXPECTED_USER"
-    TARGET_REQUIRED_ROLE="$CODE_REQUIRED_ROLE"
-    TARGET_ROLE_KEY=CODE_REQUIRED_ROLE
-    ;;
-  apex)
-    TARGET_SCHEMA="$APEX_PARSING_SCHEMA"
-    TARGET_CONNECTION="$APEX_SQLCL_CONNECTION"
-    TARGET_EXPECTED_USER="$APEX_EXPECTED_USER"
-    TARGET_REQUIRED_ROLE="$APEX_REQUIRED_ROLE"
-    TARGET_ROLE_KEY=APEX_REQUIRED_ROLE
-    ;;
+  tables) TARGET_CONNECTION="$TABLES_SQLCL_CONNECTION" ;;
+  code)   TARGET_CONNECTION="$CODE_SQLCL_CONNECTION" ;;
+  apex)   TARGET_CONNECTION="$APEX_SQLCL_CONNECTION" ;;
   *) echo "unsupported database target: $TARGET" >&2; exit 2 ;;
 esac
 
@@ -52,12 +38,12 @@ if [ "$DB_ENVIRONMENT" = production ]; then
     echo "production database operations are always read-only; '$OPERATION' is blocked" >&2
     exit 2
   fi
-  if [ "$TARGET_REQUIRED_ROLE" = NONE ]; then
-    echo "$TARGET_ROLE_KEY is required for production" >&2
-    exit 2
-  fi
-  if [ "$TARGET_EXPECTED_USER" = "$TARGET_SCHEMA" ]; then
-    echo "production $TARGET target must use a dedicated non-owner read-only account" >&2
-    exit 2
-  fi
+  cat >&2 <<'NOTICE'
+PRODUCTION SESSION - READ ONLY
+  Run SELECT statements only.
+  Do NOT run INSERT, UPDATE, DELETE, MERGE, or any other DML.
+  Do NOT run CREATE, ALTER, DROP, TRUNCATE, or any other DDL.
+  Do NOT COMMIT. Prepare changes for an approved deployment instead.
+  This is not enforced by the database. It is your contract.
+NOTICE
 fi

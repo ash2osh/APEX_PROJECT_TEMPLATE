@@ -33,16 +33,36 @@ Load `.env` only through `scripts/load_env.sh` or `scripts/load_env.ps1`; it is
 parsed as literal data and must never be executed as shell code. Keep
 credentials in SQLcl's saved connection store, not in `.env`.
 
+One `.env` describes exactly one APEX application, because it holds a single
+`APEX_APP_ID`. The `apps/<parsing-schema>/<app-id>/` layout still holds many
+apps: give each one its own configuration file and select it per invocation
+with `PROJECT_ENV_FILE`, which every script and guard already honors.
+
+```bash
+PROJECT_ENV_FILE=.env.app100 scripts/export_apps.sh
+PROJECT_ENV_FILE=.env.app200 scripts/export_apps.sh
+```
+
+Add each extra configuration file to `.gitignore` alongside `.env`; they are
+per-clone local state for the same reason `.env` is.
+
 ## 2. Directory Layout
 
-- `apps/<parsing-schema>/<app-slug>/` — Oracle APEX applications, exported via
+- `apps/<parsing-schema>/<app-id>/` — Oracle APEX applications, exported via
   SQLcl's APEXLANG export type (`apex export -exptype APEXLANG`), one
   directory per app, grouped by owning schema. One file per page under
   `pages/`. This is editable project source and is changed in place.
+  Directories are named by the numeric `APEX_APP_ID`, which never changes,
+  rather than by the application alias, which SQLcl picks for the export and
+  which can be renamed in APEX at any time. `scripts/export_apps.*` detects
+  whatever directory SQLcl created and renames it to the id before staging.
 - `database/<schema>/` — `DBMS_METADATA`-based schema snapshot (tables,
   views, packages, etc.), one file per object. Also a **synchronized
-  mirror** — never hand-edited.
-- `app_context/<app-slug>_<app-id>/` — durable, per-app knowledge base
+  mirror** — never hand-edited. It covers tables, views, packages, standalone
+  procedures/functions, and triggers only; sequences, types, synonyms,
+  materialized views, standalone indexes, and scheduler jobs are not
+  exported, and the manifests count only the exported types.
+- `app_context/<app-id>/` — durable, per-app knowledge base
   (purpose, architecture notes, known patterns, known bugs/gotchas). Check
   it before touching an app, update it after resolving a non-trivial issue.
   See [`app_context/README.md`](app_context/README.md) for the convention
@@ -86,11 +106,19 @@ developer or CI action for application changes.
 - Before any SQL, verify database name, service, session user, and current
   schema with a read-only identity query (see
   `.agents/rules/agent-safety.md`).
-- Production is always read-only. Each target used requires its configured
-  dedicated non-owner expected user and named required role; the scripts
-  verify both after connecting. If any selected connection, database, or
-  service name resembles production but `.env` does not classify it as
-  production, stop and ask the user to classify it.
+- **Production is read-only by instruction: run SELECT statements only.** No
+  DML (`INSERT`, `UPDATE`, `DELETE`, `MERGE`), no DDL (`CREATE`, `ALTER`,
+  `DROP`, `TRUNCATE`), no `COMMIT`. The template does not audit privileges,
+  require a dedicated account, or verify roles — it refuses write operation
+  classes at the wrapper level and prints the rule before and after
+  connecting. Keeping it is the client's responsibility. Scripts still verify
+  the session user matches the configured `*_EXPECTED_USER`. If any selected
+  connection, database, or service name resembles production but `.env` does
+  not classify it as production, stop and ask the user to classify it.
+- Before any write (DML, DDL, or a deployment script) against any environment,
+  run the guard for that operation class explicitly — nothing else calls it:
+  `scripts/check_db_target.sh write <tables|code|apex>`, or
+  `scripts/check_db_target.ps1 -Operation write -Target <tables|code|apex>`.
 
 ## 5. `.apx` (APEXlang) Delivery Rule
 
