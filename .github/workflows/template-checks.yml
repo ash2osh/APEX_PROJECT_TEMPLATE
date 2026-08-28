@@ -112,4 +112,4 @@ jobs:
 
       - name: Check Python syntax
         shell: powershell
-        run: python -c 'import ast, pathlib; [ast.parse(p.read_text(encoding="utf-8")) for p in [pathlib.Path("setup_graphify_apx.py"), *pathlib.Path("scripts").glob("*.py")]]'
+        run: python -c "import ast, pathlib; [ast.parse(p.read_text(encoding='utf-8')) for p in [pathlib.Path('setup_graphify_apx.py'), *pathlib.Path('scripts').glob('*.py')]]"
