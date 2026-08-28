@@ -15,6 +15,14 @@ fail() {
   exit 1
 }
 
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_COMMAND=python3
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_COMMAND=python
+else
+  fail "Python 3 was not found on PATH"
+fi
+
 # Git Bash on Windows refuses `ln -s` to a target that does not exist yet,
 # because it silently falls back to copying. MSYS=winsymlinks:nativestrict
 # asks for a real Windows symlink instead, which needs Developer Mode or the
@@ -173,34 +181,108 @@ INJECTION_MARKER="$TEST_ROOT/env-was-executed"
 cat > "$ENV_FILE" <<EOF
 PROJECT_NAME=\$(touch $INJECTION_MARKER)
 DB_ENVIRONMENT=development
-APEX_APP_ID=100
+APEX_APP_ID=100,200
 TABLES_SCHEMA=SAMPLE_DATA
+TABLES_PREFIXES=SAMPLE_,COMMON_
 TABLES_SQLCL_CONNECTION=dev1_SAMPLE_DATA
 TABLES_EXPECTED_USER=SAMPLE_DATA
-TABLES_REQUIRED_ROLE=NONE
 CODE_SCHEMA=SAMPLE_CODE
+CODE_PREFIXES=SAMPLE_,COMMON_
 CODE_SQLCL_CONNECTION=dev1_SAMPLE_CODE
 CODE_EXPECTED_USER=SAMPLE_CODE
-CODE_REQUIRED_ROLE=NONE
 APEX_PARSING_SCHEMA=SAMPLE_APEX
 APEX_SQLCL_CONNECTION=dev1_SAMPLE_APEX
 APEX_EXPECTED_USER=SAMPLE_APEX
-APEX_REQUIRED_ROLE=NONE
 INSTALL_UC_APX=false
 UC_APX_SKILLS_AGENT=universal
 EOF
 
-ENV_OUTPUT="$(bash -c 'source "$1" "$2"; printf "%s|%s|%s|%s" "$PROJECT_NAME" "$TABLES_SCHEMA" "$CODE_SCHEMA" "$APEX_PARSING_SCHEMA"' \
+ENV_OUTPUT="$(bash -c 'source "$1" "$2"; printf "%s|%s|%s|%s|%s|%s" "$PROJECT_NAME" "$APEX_APP_ID" "$TABLES_PREFIXES" "$CODE_PREFIXES" "$TABLES_SCHEMA" "$APEX_PARSING_SCHEMA"' \
   _ "$REPO_ROOT/scripts/load_env.sh" "$ENV_FILE")"
-test "$ENV_OUTPUT" = "\$(touch $INJECTION_MARKER)|SAMPLE_DATA|SAMPLE_CODE|SAMPLE_APEX" || fail "environment loader changed literal values"
+test "$ENV_OUTPUT" = "\$(touch $INJECTION_MARKER)|100,200|SAMPLE_,COMMON_|SAMPLE_,COMMON_|SAMPLE_DATA|SAMPLE_APEX" || fail "environment loader changed literal or CSV values"
 test ! -e "$INJECTION_MARKER" || fail "environment loader executed .env content"
 
-MISSING_ROLE_ENV_FILE="$TEST_ROOT/missing-role.env"
-grep -v '^CODE_REQUIRED_ROLE=' "$ENV_FILE" > "$MISSING_ROLE_ENV_FILE"
-if CODE_REQUIRED_ROLE=INHERITED bash -c 'source "$1" "$2"' \
-    _ "$REPO_ROOT/scripts/load_env.sh" "$MISSING_ROLE_ENV_FILE"; then
-  fail "environment loader accepted an inherited value for a missing setting"
+MISSING_PREFIX_ENV_FILE="$TEST_ROOT/missing-prefix.env"
+grep -v '^CODE_PREFIXES=' "$ENV_FILE" > "$MISSING_PREFIX_ENV_FILE"
+if CODE_PREFIXES=INHERITED_ bash -c 'source "$1" "$2"' \
+    _ "$REPO_ROOT/scripts/load_env.sh" "$MISSING_PREFIX_ENV_FILE"; then
+  fail "environment loader accepted an inherited value for a missing prefix setting"
 fi
+
+STAR_PREFIX_ENV_FILE="$TEST_ROOT/star-prefix.env"
+sed -E 's/^(TABLES_PREFIXES|CODE_PREFIXES)=.*/\1=*/' "$ENV_FILE" > "$STAR_PREFIX_ENV_FILE"
+bash -c 'source "$1" "$2"' _ "$REPO_ROOT/scripts/load_env.sh" "$STAR_PREFIX_ENV_FILE" \
+  || fail "environment loader rejected the export-all prefix sentinel"
+
+assert_env_rejected() {
+  local source_file="$1"
+  local sed_expression="$2"
+  local message="$3"
+  local invalid_file="$TEST_ROOT/invalid-env-$RANDOM.env"
+  sed -E "$sed_expression" "$source_file" > "$invalid_file"
+  if bash -c 'source "$1" "$2"' _ "$REPO_ROOT/scripts/load_env.sh" "$invalid_file"; then
+    fail "$message"
+  fi
+}
+
+assert_env_rejected "$ENV_FILE" 's/^APEX_APP_ID=.*/APEX_APP_ID=100, 200/' "environment loader accepted whitespace in APEX_APP_ID"
+assert_env_rejected "$ENV_FILE" 's/^APEX_APP_ID=.*/APEX_APP_ID=100,100/' "environment loader accepted duplicate APEX application ids"
+assert_env_rejected "$ENV_FILE" 's/^APEX_APP_ID=.*/APEX_APP_ID=100,/' "environment loader accepted an empty APEX application id"
+assert_env_rejected "$ENV_FILE" 's/^APEX_APP_ID=.*/APEX_APP_ID=0/' "environment loader accepted a non-positive APEX application id"
+assert_env_rejected "$ENV_FILE" 's/^PROJECT_NAME=.*/project_name=sample-project/' "environment loader accepted a lowercase setting name"
+assert_env_rejected "$ENV_FILE" 's/^TABLES_SCHEMA=.*/TABLES_SCHEMA=sample/' "environment loader accepted a lowercase Oracle identifier"
+assert_env_rejected "$ENV_FILE" 's/^TABLES_PREFIXES=.*/TABLES_PREFIXES=sample_/' "environment loader accepted a lowercase table prefix"
+assert_env_rejected "$ENV_FILE" 's/^TABLES_PREFIXES=.*/TABLES_PREFIXES=SAMPLE_, SAMPLE2_/' "environment loader accepted whitespace in table prefixes"
+assert_env_rejected "$ENV_FILE" 's/^TABLES_PREFIXES=.*/TABLES_PREFIXES=SAMPLE_,SAMPLE_/' "environment loader accepted duplicate table prefixes"
+assert_env_rejected "$ENV_FILE" 's/^CODE_PREFIXES=.*/CODE_PREFIXES=*,SAMPLE_/' "environment loader accepted a mixed star prefix list"
+assert_env_rejected "$ENV_FILE" 's/^CODE_PREFIXES=.*/CODE_PREFIXES=SAMPLE_,/' "environment loader accepted an empty code prefix"
+
+for removed_role in TABLES_REQUIRED_ROLE CODE_REQUIRED_ROLE APEX_REQUIRED_ROLE; do
+  LEGACY_ROLE_ENV_FILE="$TEST_ROOT/legacy-$removed_role.env"
+  printf '%s\n' "$(cat "$ENV_FILE")" "$removed_role=NONE" > "$LEGACY_ROLE_ENV_FILE"
+  if bash -c 'source "$1" "$2"' _ "$REPO_ROOT/scripts/load_env.sh" "$LEGACY_ROLE_ENV_FILE"; then
+    fail "environment loader accepted removed role setting $removed_role"
+  fi
+done
+
+"$PYTHON_COMMAND" - "$REPO_ROOT/.env.example" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+lines = path.read_text(encoding="utf-8").splitlines()
+assignments = [(i, line.split("=", 1)[0]) for i, line in enumerate(lines)
+               if re.match(r"^[A-Z][A-Z0-9_]*=", line)]
+expected = {
+    "PROJECT_NAME", "DB_ENVIRONMENT", "APEX_APP_ID",
+    "TABLES_SCHEMA", "TABLES_PREFIXES", "TABLES_SQLCL_CONNECTION", "TABLES_EXPECTED_USER",
+    "CODE_SCHEMA", "CODE_PREFIXES", "CODE_SQLCL_CONNECTION", "CODE_EXPECTED_USER",
+    "APEX_PARSING_SCHEMA", "APEX_SQLCL_CONNECTION", "APEX_EXPECTED_USER",
+    "INSTALL_UC_APX", "UC_APX_SKILLS_AGENT",
+}
+actual = {key for _, key in assignments}
+if actual != expected:
+    raise SystemExit(f".env.example keys differ: expected={sorted(expected)} actual={sorted(actual)}")
+for index, key in assignments:
+    preceding = lines[max(0, index - 2):index]
+    if len(preceding) != 2 or not preceding[0].startswith("# Purpose:") or not preceding[1].startswith("# Example"):
+        raise SystemExit(f"{key} lacks immediate Purpose and Example comments")
+PY
+bash -c 'source "$1" "$2"' _ "$REPO_ROOT/scripts/load_env.sh" "$REPO_ROOT/.env.example" \
+  || fail ".env.example does not pass the Bash loader"
+
+INIT_SKILL="$REPO_ROOT/.agents/skills/initialize-project/SKILL.md"
+grep -q 'TABLES_PREFIXES=<prefix-csv-or-\*>' "$INIT_SKILL" \
+  || fail "initialize-project does not collect table prefixes"
+grep -q 'CODE_PREFIXES=<prefix-csv-or-\*>' "$INIT_SKILL" \
+  || fail "initialize-project does not collect code prefixes"
+grep -q 'APEX_APP_ID=<positive-id-csv>' "$INIT_SKILL" \
+  || fail "initialize-project does not document multiple app ids"
+! grep -q '_REQUIRED_ROLE=<role-or-NONE>' "$INIT_SKILL" \
+  || fail "initialize-project still writes removed role settings"
+grep -q 'obsolete unsupported settings' "$INIT_SKILL" \
+  || fail "initialize-project does not flag removed role settings as unsupported"
 
 for target in tables code apex; do
   PROJECT_ENV_FILE="$ENV_FILE" "$REPO_ROOT/scripts/check_db_target.sh" read "$target"
@@ -227,7 +309,6 @@ sed \
   -e 's/DB_ENVIRONMENT=development/DB_ENVIRONMENT=production/' \
   -e 's/TABLES_SQLCL_CONNECTION=dev1_SAMPLE_DATA/TABLES_SQLCL_CONNECTION=primary-prod-SAMPLE_DATA/' \
   -e 's/TABLES_EXPECTED_USER=SAMPLE_DATA/TABLES_EXPECTED_USER=SAMPLE_DATA_AGENT_RO/' \
-  -e 's/TABLES_REQUIRED_ROLE=NONE/TABLES_REQUIRED_ROLE=SAMPLE_DATA_PROD_RO/' \
   "$ENV_FILE" > "$PROD_ENV_FILE"
 PROJECT_ENV_FILE="$PROD_ENV_FILE" "$REPO_ROOT/scripts/check_db_target.sh" read tables
 if PROJECT_ENV_FILE="$PROD_ENV_FILE" "$REPO_ROOT/scripts/check_db_target.sh" write tables; then
@@ -353,6 +434,8 @@ grep -q 'check_db_target.sh" read apex' "$REPO_ROOT/scripts/export_apps.sh" || f
 grep -q 'application.apx' "$REPO_ROOT/scripts/export_apps.sh" || fail "APEX export does not require application.apx"
 grep -q 'apexlang.json' "$REPO_ROOT/scripts/export_apps.sh" || fail "APEX export does not require .apex/apexlang.json"
 ! grep -Eqi '(uc-apx|apex)[[:space:]]+validate' "$REPO_ROOT/scripts/export_apps.sh" "$REPO_ROOT/scripts/export_apps.ps1" "$REPO_ROOT/scripts/export_apps.sql" || fail "APEX export invokes validation"
+grep -q '^SET VERIFY OFF' "$REPO_ROOT/scripts/export_apps.sql" \
+  || fail "APEX export exposes SQLcl substitution before/after blocks"
 grep -q 'SESSION_USER' "$REPO_ROOT/scripts/verify_db_access.sql" || fail "post-connect session identity check is missing"
 grep -q '\-20001' "$REPO_ROOT/scripts/verify_db_access.sql" || fail "post-connect expected-user check is missing"
 
@@ -361,14 +444,14 @@ grep -q '\-20001' "$REPO_ROOT/scripts/verify_db_access.sql" || fail "post-connec
 
 LINK_FIXTURE="$TEST_ROOT/link-fixture.md"
 printf '[missing](not-here.md)\n' > "$LINK_FIXTURE"
-if python3 "$REPO_ROOT/scripts/check_local_links.py" "$LINK_FIXTURE"; then
+if "$PYTHON_COMMAND" "$REPO_ROOT/scripts/check_local_links.py" "$LINK_FIXTURE"; then
   fail "local-link checker accepted a broken link"
 fi
 printf '%s\n' '````markdown' '[example](not-a-real-file.md)' '````' > "$LINK_FIXTURE"
-python3 "$REPO_ROOT/scripts/check_local_links.py" "$LINK_FIXTURE" || fail "local-link checker treated fenced example links as real"
+"$PYTHON_COMMAND" "$REPO_ROOT/scripts/check_local_links.py" "$LINK_FIXTURE" || fail "local-link checker treated fenced example links as real"
 
-python3 "$REPO_ROOT/scripts/check_local_links.py" "$REPO_ROOT"
+"$PYTHON_COMMAND" "$REPO_ROOT/scripts/check_local_links.py" "$REPO_ROOT"
 
-python3 "$REPO_ROOT/scripts/test_setup_graphify.py"
+"$PYTHON_COMMAND" "$REPO_ROOT/scripts/test_setup_graphify.py"
 
 echo "PASS: template synchronization and documentation checks"

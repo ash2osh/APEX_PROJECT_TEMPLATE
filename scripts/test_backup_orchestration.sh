@@ -26,6 +26,7 @@ set -euo pipefail
 connection="$4"
 schema="$6"
 scope="$7"
+prefixes="${10}"
 
 IFS=, read -r -a required_destinations <<< "$FAKE_REQUIRED_DESTINATIONS"
 for required_schema in "${required_destinations[@]}"; do
@@ -35,7 +36,7 @@ for required_schema in "${required_destinations[@]}"; do
   }
 done
 
-printf '%s:%s:%s\n' "$scope" "$schema" "$connection" >> "$FAKE_SQL_LOG"
+printf '%s:%s:%s:%s\n' "$scope" "$schema" "$connection" "$prefixes" >> "$FAKE_SQL_LOG"
 mkdir -p "database/$schema/tables" "database/$schema/views"
 
 # SQLcl spools with the platform's line terminator, so the same manifest is
@@ -79,17 +80,16 @@ PROJECT_NAME=backup-test
 DB_ENVIRONMENT=development
 APEX_APP_ID=100
 TABLES_SCHEMA=$tables_schema
+TABLES_PREFIXES=TAB_,COMMON_
 TABLES_SQLCL_CONNECTION=dev_${tables_schema}
 TABLES_EXPECTED_USER=$tables_schema
-TABLES_REQUIRED_ROLE=NONE
 CODE_SCHEMA=$code_schema
+CODE_PREFIXES=CODE_,COMMON_
 CODE_SQLCL_CONNECTION=dev_${code_schema}
 CODE_EXPECTED_USER=$code_schema
-CODE_REQUIRED_ROLE=NONE
 APEX_PARSING_SCHEMA=APEX_TEST
 APEX_SQLCL_CONNECTION=dev_APEX_TEST
 APEX_EXPECTED_USER=APEX_TEST
-APEX_REQUIRED_ROLE=NONE
 INSTALL_UC_APX=false
 UC_APX_SKILLS_AGENT=universal
 EOF
@@ -122,8 +122,10 @@ run_case() {
     FAKE_SQL_LOG="$sql_log" "$TEST_REPO/scripts/backup_db.sh"
 
   test "$(wc -l < "$sql_log" | tr -d ' ')" = 2 || fail "$case_name did not run exactly two SQLcl passes"
-  sed -n '1p' "$sql_log" | grep -q "^tables:$tables_schema:" || fail "$case_name did not run tables first"
-  sed -n '2p' "$sql_log" | grep -q "^code:$code_schema:" || fail "$case_name did not run code second"
+  sed -n '1p' "$sql_log" | grep -q "^tables:$tables_schema:.*:TAB_,COMMON_$" \
+    || fail "$case_name did not pass table prefixes in the first SQLcl call"
+  sed -n '2p' "$sql_log" | grep -q "^code:$code_schema:.*:CODE_,COMMON_$" \
+    || fail "$case_name did not pass code prefixes in the second SQLcl call"
   test -f "$TEST_REPO/database/$tables_schema/manifest-tables.txt" || fail "$case_name lost the tables manifest"
   test -f "$TEST_REPO/database/$code_schema/manifest-code.txt" || fail "$case_name lost the code manifest"
   grep -qE $'^TABLE=2\r?$' "$TEST_REPO/database/$tables_schema/manifest-tables.txt" \

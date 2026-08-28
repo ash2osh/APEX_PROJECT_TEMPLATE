@@ -41,19 +41,18 @@ try {
   $envText = @'
 PROJECT_NAME=$(throw should-not-run)
 DB_ENVIRONMENT=development
-APEX_APP_ID=100
+APEX_APP_ID=100,200
 TABLES_SCHEMA=SAMPLE_DATA
+TABLES_PREFIXES=SAMPLE_,COMMON_
 TABLES_SQLCL_CONNECTION=dev1_SAMPLE_DATA
 TABLES_EXPECTED_USER=SAMPLE_DATA
-TABLES_REQUIRED_ROLE=NONE
 CODE_SCHEMA=SAMPLE_CODE
+CODE_PREFIXES=SAMPLE_,COMMON_
 CODE_SQLCL_CONNECTION=dev1_SAMPLE_CODE
 CODE_EXPECTED_USER=SAMPLE_CODE
-CODE_REQUIRED_ROLE=NONE
 APEX_PARSING_SCHEMA=SAMPLE_APEX
 APEX_SQLCL_CONNECTION=dev1_SAMPLE_APEX
 APEX_EXPECTED_USER=SAMPLE_APEX
-APEX_REQUIRED_ROLE=NONE
 INSTALL_UC_APX=false
 UC_APX_SKILLS_AGENT=universal
 '@
@@ -61,16 +60,79 @@ UC_APX_SKILLS_AGENT=universal
   . (Join-Path $PSScriptRoot "load_env.ps1") -EnvFile $baseEnvFile
   Assert-True ($env:PROJECT_NAME -eq '$(throw should-not-run)') ".env literal value was changed or executed"
 
-  $missingRoleFile = Join-Path $testRoot "missing-role.env"
-  $env:CODE_REQUIRED_ROLE = "INHERITED"
-  [System.IO.File]::WriteAllText($missingRoleFile, $envText.Replace("CODE_REQUIRED_ROLE=NONE`n", ""))
+  Assert-True ($env:APEX_APP_ID -eq "100,200") "PowerShell loader changed the application id list"
+  Assert-True ($env:TABLES_PREFIXES -eq "SAMPLE_,COMMON_") "PowerShell loader changed the table prefix list"
+
+  $missingPrefixFile = Join-Path $testRoot "missing-prefix.env"
+  $env:CODE_PREFIXES = "INHERITED_"
+  [System.IO.File]::WriteAllText($missingPrefixFile, $envText.Replace("CODE_PREFIXES=SAMPLE_,COMMON_`n", ""))
   $rejected = $false
   try {
-    . (Join-Path $PSScriptRoot "load_env.ps1") -EnvFile $missingRoleFile
+    . (Join-Path $PSScriptRoot "load_env.ps1") -EnvFile $missingPrefixFile
   } catch {
     $rejected = $true
   }
-  Assert-True $rejected "environment loader accepted an inherited value for a missing setting"
+  Assert-True $rejected "environment loader accepted an inherited value for a missing prefix setting"
+
+  function Assert-EnvTextRejected([string]$Text, [string]$Message) {
+    $invalidFile = Join-Path $testRoot "invalid-$([Guid]::NewGuid().ToString('N')).env"
+    [System.IO.File]::WriteAllText($invalidFile, $Text)
+    $wasRejected = $false
+    try {
+      . (Join-Path $PSScriptRoot "load_env.ps1") -EnvFile $invalidFile
+    } catch {
+      $wasRejected = $true
+    }
+    Assert-True $wasRejected $Message
+  }
+
+  $starText = $envText.Replace("TABLES_PREFIXES=SAMPLE_,COMMON_", "TABLES_PREFIXES=*").Replace(
+    "CODE_PREFIXES=SAMPLE_,COMMON_", "CODE_PREFIXES=*")
+  [System.IO.File]::WriteAllText((Join-Path $testRoot "star-prefix.env"), $starText)
+  . (Join-Path $PSScriptRoot "load_env.ps1") -EnvFile (Join-Path $testRoot "star-prefix.env")
+
+  Assert-EnvTextRejected ($envText.Replace("APEX_APP_ID=100,200", "APEX_APP_ID=100, 200")) "PowerShell loader accepted whitespace in APEX_APP_ID"
+  Assert-EnvTextRejected ($envText.Replace("APEX_APP_ID=100,200", "APEX_APP_ID=100,100")) "PowerShell loader accepted duplicate APEX application ids"
+  Assert-EnvTextRejected ($envText.Replace("APEX_APP_ID=100,200", "APEX_APP_ID=100,")) "PowerShell loader accepted an empty APEX application id"
+  Assert-EnvTextRejected ($envText.Replace("APEX_APP_ID=100,200", "APEX_APP_ID=0")) "PowerShell loader accepted a non-positive APEX application id"
+  Assert-EnvTextRejected ($envText.Replace('PROJECT_NAME=$(throw should-not-run)', 'project_name=$(throw should-not-run)')) "PowerShell loader accepted a lowercase setting name"
+  Assert-EnvTextRejected ($envText.Replace("TABLES_SCHEMA=SAMPLE_DATA", "TABLES_SCHEMA=sample_data")) "PowerShell loader accepted a lowercase Oracle identifier"
+  Assert-EnvTextRejected ($envText.Replace("TABLES_PREFIXES=SAMPLE_,COMMON_", "TABLES_PREFIXES=sample_")) "PowerShell loader accepted a lowercase table prefix"
+  Assert-EnvTextRejected ($envText.Replace("TABLES_PREFIXES=SAMPLE_,COMMON_", "TABLES_PREFIXES=SAMPLE_, SAMPLE2_")) "PowerShell loader accepted whitespace in table prefixes"
+  Assert-EnvTextRejected ($envText.Replace("TABLES_PREFIXES=SAMPLE_,COMMON_", "TABLES_PREFIXES=SAMPLE_,SAMPLE_")) "PowerShell loader accepted duplicate table prefixes"
+  Assert-EnvTextRejected ($envText.Replace("CODE_PREFIXES=SAMPLE_,COMMON_", "CODE_PREFIXES=*,SAMPLE_")) "PowerShell loader accepted a mixed star prefix list"
+  Assert-EnvTextRejected ($envText.Replace("CODE_PREFIXES=SAMPLE_,COMMON_", "CODE_PREFIXES=SAMPLE_,")) "PowerShell loader accepted an empty code prefix"
+  foreach ($removedRole in @("TABLES_REQUIRED_ROLE", "CODE_REQUIRED_ROLE", "APEX_REQUIRED_ROLE")) {
+    Assert-EnvTextRejected ($envText + "`n$removedRole=NONE`n") "PowerShell loader accepted removed role setting $removedRole"
+  }
+
+  $examplePath = Join-Path $repoRoot ".env.example"
+  $exampleLines = [System.IO.File]::ReadAllLines($examplePath)
+  $expectedKeys = @(
+    "PROJECT_NAME", "DB_ENVIRONMENT", "APEX_APP_ID",
+    "TABLES_SCHEMA", "TABLES_PREFIXES", "TABLES_SQLCL_CONNECTION", "TABLES_EXPECTED_USER",
+    "CODE_SCHEMA", "CODE_PREFIXES", "CODE_SQLCL_CONNECTION", "CODE_EXPECTED_USER",
+    "APEX_PARSING_SCHEMA", "APEX_SQLCL_CONNECTION", "APEX_EXPECTED_USER",
+    "INSTALL_UC_APX", "UC_APX_SKILLS_AGENT"
+  )
+  $actualKeys = @()
+  for ($index = 0; $index -lt $exampleLines.Count; $index++) {
+    if ($exampleLines[$index] -match '^([A-Z][A-Z0-9_]*)=') {
+      $key = $Matches[1]
+      $actualKeys += $key
+      Assert-True ($index -ge 2 -and $exampleLines[$index - 2].StartsWith("# Purpose:") -and
+        $exampleLines[$index - 1].StartsWith("# Example")) "$key lacks immediate Purpose and Example comments"
+    }
+  }
+  Assert-True (($actualKeys -join ',') -eq ($expectedKeys -join ',')) ".env.example keys or order differ from the 16-key contract"
+  . (Join-Path $PSScriptRoot "load_env.ps1") -EnvFile $examplePath
+
+  $initializeSkill = [System.IO.File]::ReadAllText((Join-Path $repoRoot ".agents/skills/initialize-project/SKILL.md"))
+  Assert-True ($initializeSkill -match 'TABLES_PREFIXES=<prefix-csv-or-\*>') "initialize-project does not collect table prefixes"
+  Assert-True ($initializeSkill -match 'CODE_PREFIXES=<prefix-csv-or-\*>') "initialize-project does not collect code prefixes"
+  Assert-True ($initializeSkill -match 'APEX_APP_ID=<positive-id-csv>') "initialize-project does not document multiple app ids"
+  Assert-True (-not ($initializeSkill -match '_REQUIRED_ROLE=<role-or-NONE>')) "initialize-project still writes removed role settings"
+  Assert-True ($initializeSkill -match 'obsolete unsupported settings') "initialize-project does not flag removed role settings as unsupported"
 
   $legacyFile = Join-Path $testRoot "legacy.env"
   [System.IO.File]::WriteAllText($legacyFile, $envText + "`nDB_TARGET_SCHEMA=LEGACY`n")
@@ -111,8 +173,7 @@ UC_APX_SKILLS_AGENT=universal
   $productionFile = Join-Path $testRoot "production.env"
   $productionText = $envText.Replace("DB_ENVIRONMENT=development", "DB_ENVIRONMENT=production").Replace(
     "TABLES_SQLCL_CONNECTION=dev1_SAMPLE_DATA", "TABLES_SQLCL_CONNECTION=primary-prod-SAMPLE_DATA").Replace(
-    "TABLES_EXPECTED_USER=SAMPLE_DATA", "TABLES_EXPECTED_USER=SAMPLE_DATA_AGENT_RO").Replace(
-    "TABLES_REQUIRED_ROLE=NONE", "TABLES_REQUIRED_ROLE=SAMPLE_DATA_PROD_RO")
+    "TABLES_EXPECTED_USER=SAMPLE_DATA", "TABLES_EXPECTED_USER=SAMPLE_DATA_AGENT_RO")
   [System.IO.File]::WriteAllText($productionFile, $productionText)
   $env:PROJECT_ENV_FILE = $productionFile
   & (Join-Path $PSScriptRoot "check_db_target.ps1") -Operation read -Target tables
@@ -144,6 +205,8 @@ UC_APX_SKILLS_AGENT=universal
   Assert-True $rejected "production write operation was accepted"
 
   $verifySql = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot "verify_db_access.sql"))
+  $exportSql = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot "export_apps.sql"))
+  Assert-True ($exportSql -match '(?m)^SET VERIFY OFF') "APEX export exposes SQLcl substitution before/after blocks"
   Assert-True ($verifySql -match "SELECT statements only") "post-connect production instruction is missing"
   Assert-True (-not ($verifySql -match "session_privs|session_roles|user_tab_privs_recd|role_tab_privs")) `
     "verify_db_access.sql still audits privileges"
@@ -159,6 +222,8 @@ UC_APX_SKILLS_AGENT=universal
     $rejected = $true
   }
   Assert-True $rejected "environment loader accepted the legacy APEX_APP_SLUG setting"
+
+  & (Join-Path $PSScriptRoot "test_orchestration.ps1")
 
   Write-Host "PASS: native PowerShell template checks"
 } finally {

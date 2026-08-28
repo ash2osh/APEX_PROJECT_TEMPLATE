@@ -75,6 +75,19 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Check Git Bash syntax
+        shell: bash
+        run: bash -n scripts/*.sh
+
+      - name: Run Git Bash repository self-checks
+        shell: bash
+        run: bash scripts/test_template.sh
+
       - name: Check PowerShell syntax
         shell: pwsh
         run: |
@@ -89,6 +102,14 @@ jobs:
           }
           if ($failed) { exit 1 }
 
-      - name: Run native PowerShell checks
+      - name: Run PowerShell 7 checks
         shell: pwsh
         run: ./scripts/test_template.ps1
+
+      - name: Run Windows PowerShell 5.1 checks
+        shell: powershell
+        run: ./scripts/test_template.ps1
+
+      - name: Check Python syntax
+        shell: powershell
+        run: python -c 'import ast, pathlib; [ast.parse(p.read_text(encoding="utf-8")) for p in [pathlib.Path("setup_graphify_apx.py"), *pathlib.Path("scripts").glob("*.py")]]'

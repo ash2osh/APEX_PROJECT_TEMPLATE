@@ -34,14 +34,23 @@ cat > "$FAKE_SQL" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
 schema="$6"
-if [ "${FAKE_EXPORT_NOTHING:-false}" = true ]; then
+app_id="$7"
+printf '%s\n' "$app_id" >> "$FAKE_SQL_LOG"
+if [ "${FAKE_FAIL_APP_ID:-}" = "$app_id" ]; then
+  exit 42
+fi
+if [ "${FAKE_EXPORT_NOTHING_APP_ID:-}" = "$app_id" ]; then
   exit 0
 fi
-for alias_name in $FAKE_APP_ALIASES; do
+alias_names="app-${app_id}-${FAKE_ALIAS_SUFFIX:-default}"
+if [ "${FAKE_AMBIGUOUS_APP_ID:-}" = "$app_id" ]; then
+  alias_names="$alias_names app-${app_id}-second"
+fi
+for alias_name in $alias_names; do
   app_dir="apps/$schema/$alias_name"
   mkdir -p "$app_dir/pages" "$app_dir/.apex"
-  printf 'prompt application\r\n' > "$app_dir/application.apx"
-  printf 'prompt page one\r\n' > "$app_dir/pages/p00001.apx"
+  printf 'prompt application %s\r\n' "$app_id" > "$app_dir/application.apx"
+  printf 'prompt page one for %s\r\n' "$app_id" > "$app_dir/pages/p00001.apx"
   printf '{"format":"APEXLANG"}\n' > "$app_dir/.apex/apexlang.json"
 done
 FAKE
@@ -53,64 +62,85 @@ ENV_FILE="$TEST_ROOT/export.env"
 cat > "$ENV_FILE" <<'ENVEOF'
 PROJECT_NAME=export-test
 DB_ENVIRONMENT=development
-APEX_APP_ID=100
+APEX_APP_ID=100,101
 TABLES_SCHEMA=SAMPLE_DATA
+TABLES_PREFIXES=SAMPLE_
 TABLES_SQLCL_CONNECTION=dev_SAMPLE_DATA
 TABLES_EXPECTED_USER=SAMPLE_DATA
-TABLES_REQUIRED_ROLE=NONE
 CODE_SCHEMA=SAMPLE_CODE
+CODE_PREFIXES=SAMPLE_
 CODE_SQLCL_CONNECTION=dev_SAMPLE_CODE
 CODE_EXPECTED_USER=SAMPLE_CODE
-CODE_REQUIRED_ROLE=NONE
 APEX_PARSING_SCHEMA=SAMPLE_APEX
 APEX_SQLCL_CONNECTION=dev_SAMPLE_APEX
 APEX_EXPECTED_USER=SAMPLE_APEX
-APEX_REQUIRED_ROLE=NONE
 INSTALL_UC_APX=false
 UC_APX_SKILLS_AGENT=universal
 ENVEOF
 
 run_export() {
   PATH="$TEST_ROOT/bin:$PATH" PROJECT_ENV_FILE="$ENV_FILE" \
-    FAKE_APP_ALIASES="$1" FAKE_EXPORT_NOTHING="${2:-false}" \
+    FAKE_SQL_LOG="$TEST_ROOT/sql.log" \
+    FAKE_ALIAS_SUFFIX="${FAKE_ALIAS_SUFFIX:-default}" \
+    FAKE_FAIL_APP_ID="${FAKE_FAIL_APP_ID:-}" \
+    FAKE_EXPORT_NOTHING_APP_ID="${FAKE_EXPORT_NOTHING_APP_ID:-}" \
+    FAKE_AMBIGUOUS_APP_ID="${FAKE_AMBIGUOUS_APP_ID:-}" \
     "$TEST_REPO/scripts/export_apps.sh"
 }
 
-MIRROR="$TEST_REPO/apps/SAMPLE_APEX/100"
+MIRROR_100="$TEST_REPO/apps/SAMPLE_APEX/100"
+MIRROR_101="$TEST_REPO/apps/SAMPLE_APEX/101"
 
-# An alias-named export is installed under the application id.
-run_export "sample-app-alias"
-test -f "$MIRROR/application.apx" || fail "export was not installed under the application id"
-test -f "$MIRROR/pages/p00001.apx" || fail "exported pages were not installed"
-test -f "$MIRROR/.apex/apexlang.json" || fail "exported .apex metadata was not installed"
-test ! -e "$TEST_REPO/apps/SAMPLE_APEX/sample-app-alias" || fail "alias-named directory was left behind"
-! LC_ALL=C grep -q $'\r' "$MIRROR/application.apx" || fail "exported .apx retained CR characters"
-! LC_ALL=C grep -q $'\r' "$MIRROR/pages/p00001.apx" || fail "exported page retained CR characters"
+# Two alias-named exports are staged, verified, normalized, and installed under
+# their immutable numeric application ids only after both SQLcl calls succeed.
+run_export
+test "$(tr '\n' ',' < "$TEST_ROOT/sql.log")" = "100,101," \
+  || fail "multi-app export did not call SQLcl once per application in order"
+for app_id in 100 101; do
+  mirror="$TEST_REPO/apps/SAMPLE_APEX/$app_id"
+  test -f "$mirror/application.apx" || fail "app $app_id was not installed under its id"
+  test -f "$mirror/pages/p00001.apx" || fail "app $app_id pages were not installed"
+  test -f "$mirror/.apex/apexlang.json" || fail "app $app_id metadata was not installed"
+  grep -q "application $app_id" "$mirror/application.apx" || fail "app $app_id received another app's export"
+  ! LC_ALL=C grep -q $'\r' "$mirror/application.apx" || fail "app $app_id retained CR characters"
+done
+test "$(find "$TEST_REPO/apps/SAMPLE_APEX" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" = 2 \
+  || fail "alias directories were left beside the two numeric mirrors"
 
 # Renaming the alias in APEX must not fork the mirror into a second directory.
 commit_all "seed exported app mirror"
-printf 'prompt stale page\n' > "$MIRROR/pages/p00002.apx"
+printf 'prompt stale page\n' > "$MIRROR_100/pages/p00002.apx"
 commit_all "add a page that the next export no longer contains"
-run_export "totally-different-alias"
-test -f "$MIRROR/application.apx" || fail "re-export with a new alias lost the mirror"
-test ! -e "$MIRROR/pages/p00002.apx" || fail "re-export retained stale page content"
-test ! -e "$TEST_REPO/apps/SAMPLE_APEX/totally-different-alias" || fail "renamed alias forked the mirror"
-test "$(find "$TEST_REPO/apps/SAMPLE_APEX" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" = 1 \
-  || fail "more than one application directory exists after a rename"
+FAKE_ALIAS_SUFFIX=renamed run_export
+test ! -e "$MIRROR_100/pages/p00002.apx" || fail "re-export retained stale page content"
+test "$(find "$TEST_REPO/apps/SAMPLE_APEX" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" = 2 \
+  || fail "renamed aliases forked numeric mirrors"
 
-# A dirty mirror is still refused, and an empty or ambiguous export fails loudly.
+# Failure of the second export must leave both existing mirrors untouched.
 commit_all "record re-export"
-printf 'local edit\n' >> "$MIRROR/application.apx"
-if run_export "sample-app-alias"; then
+if FAKE_FAIL_APP_ID=101 run_export; then
+  fail "export accepted failure of the second application"
+fi
+test -z "$(git -C "$TEST_REPO" status --porcelain -- apps)" \
+  || fail "failure of the second export changed an existing mirror"
+
+# Every destination is preflighted before the first SQLcl call.
+printf 'local edit\n' >> "$MIRROR_101/application.apx"
+lines_before="$(wc -l < "$TEST_ROOT/sql.log" | tr -d ' ')"
+if run_export; then
   fail "export replaced a dirty mirror"
 fi
-git -C "$TEST_REPO" checkout -- "apps/SAMPLE_APEX/100/application.apx"
+lines_after="$(wc -l < "$TEST_ROOT/sql.log" | tr -d ' ')"
+test "$lines_before" = "$lines_after" || fail "SQLcl ran before every destination was preflighted"
+git -C "$TEST_REPO" checkout -- "apps/SAMPLE_APEX/101/application.apx"
 
-if run_export "" true; then
+if FAKE_EXPORT_NOTHING_APP_ID=100 run_export; then
   fail "export accepted an SQLcl run that produced no application directory"
 fi
-if run_export "alias-one alias-two"; then
+if FAKE_AMBIGUOUS_APP_ID=100 run_export; then
   fail "export accepted an ambiguous multi-directory export"
 fi
+test -z "$(git -C "$TEST_REPO" status --porcelain -- apps)" \
+  || fail "invalid staged exports changed existing mirrors"
 
-echo "PASS: APEX export names its mirror by application id"
+echo "PASS: atomic multi-application APEX export orchestration"
