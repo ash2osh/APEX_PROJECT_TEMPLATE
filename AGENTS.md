@@ -195,8 +195,11 @@ for the edit and fallback workflow.
 [`.agents/rules/graphify.md`](.agents/rules/graphify.md) (auto-applies, but
 every rule is gated on `graphify-out/graph.json` existing) and
 [`.agents/workflows/graphify.md`](.agents/workflows/graphify.md). On a new
-machine, run `python3 setup_graphify_apx.py` before first use — see
-`.graphifyignore` for what's excluded from the graph.
+machine, run `python3 setup_graphify_apx.py` before first use, configure a
+semantic backend, and run `graphify extract . --force`. The graph is a domain
+allowlist containing only `apps/`, `database/`, and `app_context/`. After a
+Graphify upgrade, rerun setup so the tracked APEXlang extractor is refreshed
+and verified — see `.graphifyignore` and the workflow for update commands.
 
 ## 8. Testing Convention
 

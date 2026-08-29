@@ -1,18 +1,29 @@
-scratch/
+# Domain allowlist: Graphify describes deployed APEX applications, their
+# database objects, and the durable per-application context. New repository
+# roots stay excluded unless deliberately added here.
+/*
+!/apps/
+!/database/
+!/app_context/
 
-# Generated backup-driver helpers; keep the canonical .sql sources they are
-# spooled from. They are written under the staging directory in scratch/, so
-# the entry above already covers them; this is belt-and-braces for a driver
-# ever spooled from the repository root.
-scripts/_backup_db_driver_*.sql
+# Keep only project-domain source. Root placeholders and the app-context
+# convention describe the template itself, not an application architecture.
+/apps/.gitkeep
+/database/.gitkeep
+/app_context/README.md
+/database/**/manifest-code.txt
+/database/**/manifest-tables.txt
 
+# APEX export tooling metadata and embedded/static payloads are not application
+# architecture. Keep application declarations, pages, shared components, and
+# supporting-object source outside these paths.
+/apps/**/.apex/
+/apps/**/deployments/
+/apps/**/workspace-components/
+/apps/**/static-files.apx
+/apps/**/static-files/
+
+# Belt-and-braces exclusions for generated logs if an export places them below
+# one of the retained domain roots.
 **/export.log
 **/export_err.log
-
-# Generated or embedded static assets.
-*.css
-*.js
-*.mjs
-**/fontawesome*/**
-**/webfonts/**
-**/static-files/**

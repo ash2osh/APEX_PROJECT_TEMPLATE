@@ -140,3 +140,18 @@ Add lessons below only when the evidence supports them.
   only where both cases are intentionally allowed.
 - Verification: `scripts/test_template.ps1` and `scripts/test_template.sh`
   reject lowercase setting names, Oracle identifiers, and prefixes.
+
+### Invalidate APEXlang AST cache after changing the installed extractor
+
+- Trigger: replacing Graphify's installed `.apx` extractor and rebuilding an
+  existing graph.
+- Evidence: `graphify update . --force` reused 111 cached APEXlang results from
+  the former SQL route, leaving every `.apx` source with zero architectural
+  relationships even though the installed extractor had changed. Removing only
+  cached AST entries whose recorded source ended in `.apx` caused the next
+  update to rebuild 630 domain nodes and 834 relationships.
+- Preferred behavior: after installing or upgrading the repository-owned
+  APEXlang extractor, invalidate only `.apx` AST cache records; preserve caches
+  for SQL and every unrelated language.
+- Verification: `scripts/test_setup_graphify.py` proves setup removes matching
+  `.apx` entries, retains non-APEX entries, and remains idempotent.

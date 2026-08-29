@@ -23,6 +23,20 @@ agent skills:
 sql -S -noupdates /nolog -e "skills sync"
 ```
 
+Optional Graphify support uses a repository-owned APEXlang extractor and a
+domain-only corpus (`apps/`, `database/`, and `app_context/`). After installing
+Graphify and configuring a supported semantic backend, initialize it with:
+
+```bash
+python3 setup_graphify_apx.py
+graphify extract . --force
+```
+
+Use `graphify update .` after APEXlang or database changes and incremental
+`graphify extract .` after changing `app_context`. Rerun the setup command after
+every Graphify upgrade. See the [Graphify workflow](.agents/workflows/graphify.md)
+for exclusions and verification queries.
+
 ### Windows
 
 Use Windows PowerShell 5.1 or PowerShell 7 with the native wrappers:

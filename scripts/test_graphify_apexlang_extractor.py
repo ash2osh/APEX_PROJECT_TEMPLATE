@@ -1,0 +1,484 @@
+#!/usr/bin/env python3
+"""Regression tests for the repository-owned Graphify APEXlang extractor."""
+
+from __future__ import annotations
+
+import importlib.util
+import shutil
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+MODULE_PATH = REPO_ROOT / "scripts" / "graphify_apexlang_extractor.py"
+
+
+class ExtractorPresenceTests(unittest.TestCase):
+    def test_canonical_extractor_is_tracked_in_the_repository(self) -> None:
+        self.assertTrue(
+            MODULE_PATH.is_file(),
+            "scripts/graphify_apexlang_extractor.py is missing",
+        )
+
+
+@unittest.skipUnless(MODULE_PATH.is_file(), "canonical extractor is missing")
+class ApexlangExtractorTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        sys.dont_write_bytecode = True
+        spec = importlib.util.spec_from_file_location("graphify_apexlang_extractor", MODULE_PATH)
+        assert spec and spec.loader
+        cls.module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = cls.module
+        spec.loader.exec_module(cls.module)
+
+    def setUp(self) -> None:
+        scratch = REPO_ROOT / "scratch"
+        scratch.mkdir(exist_ok=True)
+        self.root = Path(tempfile.mkdtemp(prefix="apexlang-extractor-test.", dir=scratch))
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.root)
+
+    def extract(self, source: str, relative: str = "apps/DEMO/102/pages/p00004-home.apx") -> dict:
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source, encoding="utf-8")
+        return self.module.extract_apexlang(path)
+
+    def edge_tuples(self, result: dict) -> set[tuple[str, str, str]]:
+        return {
+            (edge["source"], edge["target"], edge["relation"])
+            for edge in result["edges"]
+        }
+
+    def test_exposes_graphify_extractor_entry_point(self) -> None:
+        self.assertTrue(
+            hasattr(self.module, "extract_apexlang"),
+            "extract_apexlang(path) is missing",
+        )
+
+    def test_extracts_architectural_containment_and_source_lines(self) -> None:
+        result = self.extract(
+            """page 4 (
+    name: Home
+    region categories (
+        name: Categories
+    )
+    dynamicAction open-search (
+        name: Open Search
+    )
+    process create-order (
+        name: Create Order
+    )
+)
+"""
+        )
+
+        self.assertNotIn("error", result)
+        nodes = {node["id"]: node for node in result["nodes"]}
+        self.assertEqual(nodes["apex_app_102_page_4"]["label"], "Page 4: Home")
+        self.assertEqual(nodes["apex_app_102_page_4"]["source_location"], "L1")
+        self.assertEqual(
+            nodes["apex_app_102_page_4_region_categories"]["label"],
+            "Region: Categories",
+        )
+        self.assertEqual(
+            nodes["apex_app_102_page_4_dynamic_action_open_search"]["label"],
+            "Dynamic Action: Open Search",
+        )
+        self.assertEqual(
+            nodes["apex_app_102_page_4_process_create_order"]["label"],
+            "Process: Create Order",
+        )
+        edges = self.edge_tuples(result)
+        self.assertIn(("apex_app_102", "apex_app_102_page_4", "contains"), edges)
+        self.assertIn(
+            (
+                "apex_app_102_page_4",
+                "apex_app_102_page_4_region_categories",
+                "contains",
+            ),
+            edges,
+        )
+
+    def test_extracts_application_and_shared_components(self) -> None:
+        result = self.extract(
+            """app 102 (
+    name: APEXToGo
+)
+list navigation-menu (
+    name: Navigation Menu
+)
+lov restaurant-lov (
+    name: Restaurants
+)
+authorization must-not-be-public-user (
+    name: Must Not Be Public User
+)
+""",
+            "apps/DEMO/102/application.apx",
+        )
+
+        nodes = {node["id"]: node for node in result["nodes"]}
+        self.assertEqual(nodes["apex_app_102"]["label"], "App 102: APEXToGo")
+        self.assertIn("apex_app_102_list_navigation_menu", nodes)
+        self.assertIn("apex_app_102_lov_restaurant_lov", nodes)
+        self.assertIn("apex_app_102_authorization_must_not_be_public_user", nodes)
+        edges = self.edge_tuples(result)
+        self.assertIn(
+            ("apex_app_102", "apex_app_102_list_navigation_menu", "contains"),
+            edges,
+        )
+
+    def test_keeps_nonarchitectural_components_out_of_nodes(self) -> None:
+        result = self.extract(
+            """page 4 (
+    button checkout (
+        name: Checkout
+    )
+    pageItem P4_QUERY (
+        name: Query
+    )
+    region cards (
+        column NAME (
+        )
+    )
+)
+"""
+        )
+
+        node_ids = {node["id"] for node in result["nodes"]}
+        self.assertFalse(any("checkout" in node_id for node_id in node_ids))
+        self.assertFalse(any("p4_query" in node_id for node_id in node_ids))
+        self.assertFalse(any("column" in node_id for node_id in node_ids))
+        self.assertIn("apex_app_102_page_4_region_cards", node_ids)
+
+    def test_scopes_same_named_regions_by_application_and_page(self) -> None:
+        first = self.extract("page 4 (\n region summary (\n )\n)\n")
+        second = self.extract(
+            "page 5 (\n region summary (\n )\n)\n",
+            "apps/DEMO/103/pages/p00005-summary.apx",
+        )
+
+        first_ids = {node["id"] for node in first["nodes"]}
+        second_ids = {node["id"] for node in second["nodes"]}
+        self.assertIn("apex_app_102_page_4_region_summary", first_ids)
+        self.assertIn("apex_app_103_page_5_region_summary", second_ids)
+        self.assertFalse(first_ids & second_ids - {""})
+
+    def test_ignores_delimiters_inside_fences_comments_arrays_and_values(self) -> None:
+        result = self.extract(
+            '''page 4 (
+    // a comment with ) and {
+    css {
+        inline:
+            ```css
+            .x::after { content: ")"; }
+            ```
+    }
+    appearance {
+        templateOptions: [
+            #DEFAULT#
+            body-height-fill
+        ]
+    }
+    region content (
+    )
+)
+'''
+        )
+
+        self.assertNotIn("error", result)
+        self.assertIn(
+            "apex_app_102_page_4_region_content",
+            {node["id"] for node in result["nodes"]},
+        )
+
+    def test_reports_unbalanced_component_or_fence_as_error(self) -> None:
+        component = self.extract("page 4 (\n region broken (\n )\n")
+        fence = self.extract("page 4 (\n code: ```plsql\n begin null; end;\n)\n")
+
+        self.assertEqual(component["nodes"], [])
+        self.assertIn("unclosed component", component["error"])
+        self.assertEqual(fence["nodes"], [])
+        self.assertIn("unclosed multiline fence", fence["error"])
+
+    def test_output_is_stable_across_repeated_extraction(self) -> None:
+        source = "page 4 (\n region categories (\n )\n)\n"
+        first = self.extract(source)
+        second = self.extract(source)
+        self.assertEqual(first, second)
+
+    def test_extracts_navigation_security_and_component_references(self) -> None:
+        result = self.extract(
+            """page 8 (
+    name: Cart
+    security {
+        authorizationScheme: @must-not-be-public-user
+    }
+    region cart-lines (
+        appearance {
+            template: @/content-block
+        }
+        source {
+            listOfValues: @restaurant-lov
+        }
+        action open-item (
+            behavior {
+                target: {
+                    page: 7
+                }
+            }
+        )
+    )
+)
+list navigation-menu (
+    entry cart (
+        link { target: { page: 8 } }
+    )
+    entry faq (
+        link {
+            targetUrl: f?p=&APP_ID.:13:&APP_SESSION.
+        }
+    )
+)
+"""
+        )
+
+        edges = self.edge_tuples(result)
+        self.assertIn(
+            (
+                "apex_app_102_page_8",
+                "apex_app_102_authorization_must_not_be_public_user",
+                "secured_by",
+            ),
+            edges,
+        )
+        self.assertIn(
+            (
+                "apex_app_102_page_8_region_cart_lines",
+                "apex_app_102_lov_restaurant_lov",
+                "references_component",
+            ),
+            edges,
+        )
+        self.assertIn(
+            (
+                "apex_app_102_page_8_region_cart_lines",
+                "apex_app_102_page_7",
+                "navigates_to",
+            ),
+            edges,
+        )
+        self.assertIn(
+            (
+                "apex_app_102_list_navigation_menu",
+                "apex_app_102_page_8",
+                "navigates_to",
+            ),
+            edges,
+        )
+        self.assertIn(
+            (
+                "apex_app_102_list_navigation_menu",
+                "apex_app_102_page_13",
+                "navigates_to",
+            ),
+            edges,
+        )
+
+    def test_extracts_sql_reads_writes_and_plsql_calls(self) -> None:
+        result = self.extract(
+            """page 8 (
+    region cart-lines (
+        source {
+            sqlQuery:
+                ```sql
+                select i.name
+                  from sample_restaurant_items i
+                  join sample_restaurant_order_items oi on oi.item_id = i.id
+                 where i.notes <> 'from not_a_table'
+                   -- join ignored_comment_table x on 1 = 1
+                ```
+        }
+    )
+    process checkout (
+        source {
+            plsqlCode:
+                ```plsql
+                insert into sample_restaurant_orders(id) values (1);
+                update sample_restaurant_order_items set quantity = 2;
+                sample_restaurant_manage_orders.create_order;
+                apex_collection.create_collection('FROM ALSO_NOT_A_TABLE');
+                ```
+        }
+    )
+)
+"""
+        )
+
+        edges = self.edge_tuples(result)
+        region = "apex_app_102_page_8_region_cart_lines"
+        process = "apex_app_102_page_8_process_checkout"
+        self.assertIn((region, "sample_restaurant_items", "reads_from"), edges)
+        self.assertIn((region, "sample_restaurant_order_items", "reads_from"), edges)
+        self.assertIn((process, "sample_restaurant_orders", "writes_to"), edges)
+        self.assertIn((process, "sample_restaurant_order_items", "writes_to"), edges)
+        self.assertIn(
+            (process, "sample_restaurant_manage_orders_create_order", "calls"),
+            edges,
+        )
+        all_targets = {target for _, target, _ in edges}
+        self.assertNotIn("not_a_table", all_targets)
+        self.assertNotIn("ignored_comment_table", all_targets)
+        self.assertNotIn("also_not_a_table", all_targets)
+        self.assertNotIn("apex_collection_create_collection", all_targets)
+
+    def test_extracts_unqualified_authorization_and_inline_code(self) -> None:
+        result = self.extract(
+            """page 8 (
+    security {
+        authorizationScheme: mustNotBePublicUser
+    }
+    region order-summary (
+        source {
+            sqlQuery: select id from sample_restaurant_orders
+        }
+    )
+    process submit-order (
+        source {
+            plsqlCode: sample_restaurant_manage_orders.create_order;
+        }
+    )
+)
+"""
+        )
+
+        edges = self.edge_tuples(result)
+        node_ids = {node["id"] for node in result["nodes"]}
+        self.assertIn(
+            "apex_app_102_authorization_mustnotbepublicuser",
+            node_ids,
+            "built-in authorization references must have a graph endpoint",
+        )
+        self.assertIn(
+            (
+                "apex_app_102_page_8",
+                "apex_app_102_authorization_mustnotbepublicuser",
+                "secured_by",
+            ),
+            edges,
+        )
+        self.assertIn(
+            (
+                "apex_app_102_page_8_region_order_summary",
+                "sample_restaurant_orders",
+                "reads_from",
+            ),
+            edges,
+        )
+        self.assertIn(
+            (
+                "apex_app_102_page_8_process_submit_order",
+                "sample_restaurant_manage_orders_create_order",
+                "calls",
+            ),
+            edges,
+        )
+
+    def test_ignores_self_navigation_and_theme_template_list_references(self) -> None:
+        result = self.extract(
+            """page 8 (
+    action refresh-cart (
+        behavior {
+            target: { page: 8 }
+        }
+    )
+)
+theme universal-theme (
+    componentDefaults {
+        list: @/links-list
+    }
+)
+"""
+        )
+
+        edges = self.edge_tuples(result)
+        self.assertNotIn(
+            ("apex_app_102_page_8", "apex_app_102_page_8", "navigates_to"),
+            edges,
+        )
+        self.assertNotIn(
+            ("apex_app_102", "apex_app_102_list_links_list", "references_component"),
+            edges,
+        )
+
+    def test_does_not_scan_non_sql_fences_for_database_dependencies(self) -> None:
+        result = self.extract(
+            '''page 4 (
+    region banner (
+        css {
+            inline:
+                ```css
+                .update .Badge { content: "from fake_table"; }
+                ```
+        }
+        content {
+            html:
+                ```html
+                <p>Delete from fake_orders and update Icon.</p>
+                ```
+        }
+    )
+)
+'''
+        )
+
+        database_edges = {
+            edge
+            for edge in self.edge_tuples(result)
+            if edge[2] in {"reads_from", "writes_to", "calls"}
+        }
+        self.assertEqual(database_edges, set())
+
+    def test_does_not_treat_extract_operands_or_record_fields_as_dependencies(self) -> None:
+        result = self.extract(
+            """page 41 (
+    process measure-load (
+        source {
+            plsqlCode:
+                ```plsql
+                begin
+                    for c1 in (
+                        select extract(day from diff) total_days
+                          from (select systimestamp - created_on diff
+                                  from sample_restaurant_orders)
+                    ) loop
+                        :P41_TOTAL := c1.total_days;
+                    end loop;
+                    sample_restaurant_manage_orders.create_order;
+                end;
+                ```
+        }
+    )
+)
+"""
+        )
+
+        edges = self.edge_tuples(result)
+        process = "apex_app_102_page_41_process_measure_load"
+        self.assertIn((process, "sample_restaurant_orders", "reads_from"), edges)
+        self.assertIn(
+            (process, "sample_restaurant_manage_orders_create_order", "calls"),
+            edges,
+        )
+        targets = {target for _, target, _ in edges}
+        self.assertNotIn("diff", targets)
+        self.assertNotIn("c1_total_days", targets)
+
+
+if __name__ == "__main__":
+    unittest.main()
