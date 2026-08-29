@@ -5,6 +5,27 @@ provides strict local configuration, guarded SQLcl connections, atomic APEX
 and metadata exports, and coding-agent guidance. Application code and database
 mirrors start empty.
 
+## Prerequisites
+
+Install these before running anything in this repository:
+
+| Requirement | Needed for |
+|---|---|
+| **Python 3.10+** | Graphify, `setup_graphify_apx.py`, and the repository's own scripts and test suite |
+| **Node.js** | The `apex` skill's APEXlang tooling — `node tools/apexctl.mjs` drives `apexlang format`, grammar validation, and `runtime validate` for `.apx` sources |
+| **Graphify** | Required. The knowledge graph this template is built around; see [Knowledge graph](#knowledge-graph) below |
+| **SQLcl** | Every database and APEX export, backup, and deployment command |
+| **Git** | The export and backup scripts refuse to overwrite a dirty mirror |
+| **perl** | The Bash APEX line-ending normalizer (bundled with Git Bash on Windows) |
+
+Oracle's official `apex` and `db` agent skills supply the APEX, PL/SQL, SQL,
+and ORDS knowledge this repository deliberately does not restate. Install or
+refresh them once per machine:
+
+```text
+sql -S -noupdates /nolog -e "skills sync"
+```
+
 ## Setup
 
 1. Clone or copy the repository.
@@ -16,26 +37,45 @@ mirrors start empty.
 4. Record the real schema ownership in `AGENTS.md` §6.
 5. Run the export and backup commands for your operating system.
 
-Run once per machine to install or refresh Oracle's official database and APEX
-agent skills:
+### Knowledge graph
 
-```text
-sql -S -noupdates /nolog -e "skills sync"
-```
+Graphify is required for this project. It indexes a domain-only corpus
+(`apps/`, `database/`, and `app_context/`) through a repository-owned APEXlang
+extractor, so `.apx` files are read as APEX architecture — application and page
+containment, navigation, authorization, database reads and writes, and PL/SQL
+calls — rather than as generic SQL.
 
-Optional Graphify support uses a repository-owned APEXlang extractor and a
-domain-only corpus (`apps/`, `database/`, and `app_context/`). After installing
-Graphify and configuring a supported semantic backend, initialize it with:
+**This is what keeps agent token usage low.** A coding agent that has to answer
+"what reads this table?" or "what happens at checkout?" without a graph falls
+back on broad `grep` sweeps and reading whole files into its context, repeatedly
+and across many turns. `graphify query`, `graphify path`, and `graphify explain`
+return a scoped subgraph instead — the handful of related nodes and edges the
+question actually needs. Answering from that subgraph pulls a fraction of the
+context that reading the underlying sources would, which is why the corpus is
+restricted to project domain source and excludes tooling, agent files,
+generated output, and static assets.
+
+Install Graphify, configure a supported semantic backend, then initialize:
 
 ```bash
 python3 setup_graphify_apx.py
 graphify extract . --force
 ```
 
-Use `graphify update .` after APEXlang or database changes and incremental
-`graphify extract .` after changing `app_context`. Rerun the setup command after
-every Graphify upgrade. See the [Graphify workflow](.agents/workflows/graphify.md)
-for exclusions and verification queries.
+The first extraction must be a full one so `app_context/*.md` is indexed as
+durable architectural knowledge rather than bare Markdown headings. Afterwards:
+
+- `graphify update .` after APEXlang or database changes (local AST only, no
+  API cost).
+- `graphify extract .` after changing `app_context`, to refresh semantic
+  concepts.
+- `graphify extract . --force` after changing `.graphifyignore`.
+- `python3 setup_graphify_apx.py` again after **every Graphify upgrade**, so the
+  tracked extractor is reinstalled and verified rather than silently falling
+  back to the SQL parser.
+
+See the [Graphify workflow](.agents/workflows/graphify.md) for exclusions and
+verification queries.
 
 ### Windows
 
@@ -52,7 +92,7 @@ needed by the Bash APEX line-ending normalizer.
 
 ### Linux and macOS
 
-Use Bash and ensure `perl`, Python 3, Git, and SQLcl are available:
+Use Bash, with the prerequisites above available on `PATH`:
 
 ```bash
 scripts/export_apps.sh
@@ -159,4 +199,4 @@ scripts/                         Bash and PowerShell automation
 - [Production database safety](docs/production-database-safety.md)
 - [Application context convention](app_context/README.md)
 - [Optional uc-apx installer](.agents/skills/install-uc-apx/SKILL.md)
-- [Optional graphify workflow](.agents/workflows/graphify.md)
+- [Graphify workflow](.agents/workflows/graphify.md)
