@@ -13,7 +13,9 @@ Install these before running anything in this repository:
 |---|---|
 | **Python 3.10+** | Graphify, `setup_graphify_apx.py`, and the repository's own scripts and test suite |
 | **Node.js** | The `apex` skill's APEXlang tooling — `node tools/apexctl.mjs` drives `apexlang format`, grammar validation, and `runtime validate` for `.apx` sources |
+| **[uv](https://docs.astral.sh/uv/)** | Installing Graphify and its SQL parser as an isolated tool |
 | **Graphify** | Required. The knowledge graph this template is built around; see [Knowledge graph](#knowledge-graph) below |
+| **tree-sitter-sql** | Graphify's SQL parser. Without it the `database/` mirror and `apps/**/supporting-objects/*.sql` cannot be indexed at all |
 | **SQLcl** | Every database and APEX export, backup, and deployment command |
 | **Git** | The export and backup scripts refuse to overwrite a dirty mirror |
 | **perl** | The Bash APEX line-ending normalizer (bundled with Git Bash on Windows) |
@@ -55,12 +57,23 @@ context that reading the underlying sources would, which is why the corpus is
 restricted to project domain source and excludes tooling, agent files,
 generated output, and static assets.
 
-Install Graphify, configure a supported semantic backend, then initialize:
+Install Graphify and its SQL parser — note the distribution is `graphifyy`
+while the command it installs is `graphify`:
+
+```bash
+uv tool install graphifyy --with tree-sitter-sql
+```
+
+Then configure a supported semantic backend and initialize the graph:
 
 ```bash
 python3 setup_graphify_apx.py
 graphify extract . --force
 ```
+
+`setup_graphify_apx.py` also attempts to install `tree-sitter-sql` into
+Graphify's interpreter, but that is a best-effort fallback: install it with
+Graphify as shown above rather than relying on it.
 
 The first extraction must be a full one so `app_context/*.md` is indexed as
 durable architectural knowledge rather than bare Markdown headings. Afterwards:
@@ -73,6 +86,35 @@ durable architectural knowledge rather than bare Markdown headings. Afterwards:
 - `python3 setup_graphify_apx.py` again after **every Graphify upgrade**, so the
   tracked extractor is reinstalled and verified rather than silently falling
   back to the SQL parser.
+
+### What this template adds to Graphify
+
+Graphify has no native understanding of Oracle APEX: left alone it parses
+`.apx` exports as generic SQL, which yields file-level nodes and almost no
+architecture. This repository closes that gap and ships the integration as
+tracked, tested source.
+
+- **An APEXlang extractor** (`scripts/graphify_apexlang_extractor.py`) that
+  reads `.apx` as APEX structure — applications, pages, regions, processes,
+  dynamic actions, LOVs, lists, authentication and authorization schemes,
+  application processes, and build options — and emits `contains`,
+  `navigates_to`, `references_component`, `secured_by`, `reads_from`,
+  `writes_to`, and `calls` relationships. It is deterministic and needs no LLM.
+- **Oracle-aware SQL and PL/SQL analysis**: `#OWNER#` substitution prefixes,
+  quoted identifiers, `sys.dual`, `FOR UPDATE` row-lock clauses, `DELETE FROM`
+  targets, DML column lists, `EXTRACT(...)` operands, PL/SQL record fields, and
+  CTE names are each handled so they neither invent nor lose dependencies.
+- **A joined APEX-and-database graph**: because `database/<schema>/` is indexed
+  through `tree-sitter-sql` in the same corpus, a region's `reads_from` edge
+  resolves onto the real table's DDL, so an APEX page connects to the Oracle
+  object it actually queries.
+- **A verified, fail-closed installer** (`setup_graphify_apx.py`) that copies
+  the extractor into Graphify, reroutes `.apx` away from the SQL parser, smoke
+  tests the result, rolls back on any failure, and invalidates only stale
+  `.apx` cache entries — so the integration survives Graphify upgrades instead
+  of silently regressing.
+- **36 regression tests** covering the extractor, the installer, and the
+  corpus boundaries, wired into `scripts/test_template.sh`.
 
 See the [Graphify workflow](.agents/workflows/graphify.md) for exclusions and
 verification queries.

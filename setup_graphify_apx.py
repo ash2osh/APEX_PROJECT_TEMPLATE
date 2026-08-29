@@ -254,7 +254,8 @@ def setup_graphify_apx() -> bool:
 
     g_dirs = find_graphify_dirs()
     if not g_dirs:
-        print("Warning: Graphify installation not found. Please install Graphify first (e.g. uv tool install graphify).")
+        print("Warning: Graphify installation not found. Install it first:\n"
+              "  uv tool install graphifyy --with tree-sitter-sql")
         return False
 
     results = [patch_graphify_dir(Path(base)) for base in g_dirs]
