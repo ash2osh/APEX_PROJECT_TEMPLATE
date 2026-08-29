@@ -5,6 +5,8 @@ provides strict local configuration, guarded SQLcl connections, atomic APEX
 and metadata exports, and coding-agent guidance. Application code and database
 mirrors start empty.
 
+**Author:** [Ahmed Sherif](https://www.linkedin.com/in/ahmed-d-sherif)
+
 ## Prerequisites
 
 Install these before running anything in this repository:
