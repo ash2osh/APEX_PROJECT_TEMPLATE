@@ -9,7 +9,11 @@ mirrors start empty.
 
 ## Prerequisites
 
-Install these before running anything in this repository:
+A coding agent can install these for you: running `/init` detects what is
+missing, asks for your approval, and installs only what you approve. It never
+installs anything silently, and a declined prerequisite is reported rather than
+blocking setup. To do it yourself instead, install these before running
+anything in this repository:
 
 | Requirement | Needed for |
 |---|---|

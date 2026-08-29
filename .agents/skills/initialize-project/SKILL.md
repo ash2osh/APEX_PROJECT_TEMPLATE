@@ -16,6 +16,50 @@ Initialization does not connect to any database. SQLcl owns credentials.
 Never ask for or write passwords, tokens, wallets, private keys, or
 credential-bearing URLs.
 
+## Prerequisites
+
+Do this first, before the conversation, and never let it block initialization.
+
+Detect what is already present; never reinstall something that answers:
+
+| Requirement | Detect with |
+|---|---|
+| Python 3.10+ | `python3 --version` |
+| Node.js | `node --version` |
+| uv | `uv --version` |
+| Graphify | `graphify --version` |
+| SQLcl | `sql -v` |
+| Git | `git --version` |
+| perl | `perl --version` |
+
+Report exactly what is missing, then ask for approval before installing
+anything. Install only what the user approves, into user-controlled locations
+on `PATH`, never into this repository.
+
+Graphify is the one case with a known-good command, because its distribution
+name (`graphifyy`) differs from its command name (`graphify`) and its SQL
+parser is a separate package:
+
+```bash
+uv tool install graphifyy --with tree-sitter-sql
+python3 setup_graphify_apx.py
+```
+
+If `graphify` already answers but `.sql` sources are not being indexed, its
+SQL parser is missing; reinstall with `uv tool install graphifyy --with
+tree-sitter-sql --force`. Do not run `graphify extract` during initialization —
+`apps/` and `database/` are still empty, and extraction belongs after the first
+export.
+
+For Python, Node.js, uv, SQLcl, and perl, ask which platform package manager
+the user wants to use and follow that tool's own documented command. Do not
+invent package-manager commands, guess a download URL, or select a release
+asset on the user's behalf.
+
+If the user declines an installation, record it, continue, and list what is
+still missing in the final report. A missing prerequisite never prevents
+writing `.env`.
+
 ## Existing configuration
 
 If `.env` exists, read it only as text. Never source it, dot-source it, execute
@@ -142,4 +186,5 @@ the local checks pass. That skill owns installation approval and skill sync.
 | Profiles share a schema but not an account | Record each profile explicitly; never infer the remaining values. |
 | `.env` already exists | Summarize and obtain overwrite confirmation before writing. |
 | Guard reports a production-like alias | Ask the production-classification question; do not test the connection. |
-| Initialization succeeds | Report validation results; do not commit or push unless separately authorized. |
+| Initialization succeeds | Report validation results and any prerequisite the user declined; do not commit or push unless separately authorized. |
+| A prerequisite is missing | Report it and ask before installing; never install without approval, and never block `.env` on it. |
