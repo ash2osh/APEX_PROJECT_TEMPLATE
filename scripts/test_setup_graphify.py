@@ -111,6 +111,24 @@ class GraphifyPatchTests(unittest.TestCase):
         self.assertIn('".apx": extract_apexlang,', extract)
         self.assertNotIn('".apx": extract_sql,', extract)
 
+    def test_unrecognized_existing_apx_handling_fails_closed(self) -> None:
+        """A future Graphify that mentions .apx its own way must not look patched."""
+        self.write_package()
+        detect_path = self.root / "detect.py"
+        detect_path.write_text(
+            "CODE_EXTENSIONS = {'.sql',}\n"
+            "MARKUP_EXTENSIONS = {'.apx',}\n",
+            encoding="utf-8",
+        )
+        before = detect_path.read_bytes()
+
+        self.assertFalse(
+            MODULE.patch_graphify_dir(self.root),
+            "an unrecognized .apx mention must fail closed, not report success",
+        )
+        self.assertEqual(detect_path.read_bytes(), before)
+        self.assertFalse((self.root / "extractors" / "apexlang.py").exists())
+
     def test_exposes_apx_cache_invalidation(self) -> None:
         self.assertTrue(
             hasattr(MODULE, "invalidate_apx_cache"),

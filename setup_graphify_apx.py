@@ -16,6 +16,8 @@ import tempfile
 
 REPO_ROOT = Path(__file__).resolve().parent
 CANONICAL_EXTRACTOR = REPO_ROOT / "scripts" / "graphify_apexlang_extractor.py"
+# The exact text this installer writes; the only proof that .apx is ours.
+DETECT_MARKER = "'.sql', '.apx',"
 
 def find_graphify_dirs():
     dirs = []
@@ -46,13 +48,21 @@ def find_graphify_dirs():
     return sorted(set(dirs))
 
 
-def _patched_detector(text: str) -> str | None:
+def _patched_detector(text: str) -> tuple[str | None, str]:
+    """Register .apx beside .sql, failing closed on unrecognized handling.
+
+    A bare ".apx" presence check is not proof of our patch: a future Graphify
+    could mention the extension for its own reasons and we would report
+    success without having registered anything.
+    """
+    if DETECT_MARKER in text:
+        return text, "already registered"
     if "'.apx'" in text or '".apx"' in text:
-        return text
-    marker = "'.sql',"
-    if marker not in text:
-        return None
-    return text.replace(marker, "'.sql', '.apx',", 1)
+        return None, "unrecognized pre-existing .apx handling; refusing to patch"
+    anchor = "'.sql',"
+    if anchor not in text:
+        return None, "SQL extension anchor not found"
+    return text.replace(anchor, DETECT_MARKER, 1), "registered"
 
 
 def _patched_dispatch(text: str) -> str | None:
@@ -130,8 +140,8 @@ def verify_installation(base: Path) -> tuple[bool, str]:
         return False, "installed extractor differs from canonical source"
     detect = detect_path.read_text(encoding="utf-8")
     extract = extract_path.read_text(encoding="utf-8")
-    if "'.apx'" not in detect and '".apx"' not in detect:
-        return False, ".apx is not classified as code"
+    if DETECT_MARKER not in detect:
+        return False, ".apx is not registered beside .sql as a code extension"
     if "from graphify.extractors.apexlang import extract_apexlang" not in extract:
         return False, "APEXlang extractor import is missing"
     if '".apx": extract_apexlang,' not in extract:
@@ -184,13 +194,13 @@ def patch_graphify_dir(base: Path) -> bool:
     extract_bytes = extract_path.read_bytes()
     old_installed = installed_path.read_bytes() if installed_path.exists() else None
     try:
-        patched_detect = _patched_detector(detect_bytes.decode("utf-8"))
+        patched_detect, detect_reason = _patched_detector(detect_bytes.decode("utf-8"))
         patched_extract = _patched_dispatch(extract_bytes.decode("utf-8"))
     except UnicodeError as exc:
         print(f"Warning: could not decode Graphify package at '{base}': {exc}")
         return False
     if patched_detect is None:
-        print(f"Warning: could not patch {detect_path}; SQL extension anchor not found")
+        print(f"Warning: could not patch {detect_path}; {detect_reason}")
         return False
     if patched_extract is None:
         print(f"Warning: could not patch {extract_path}; extractor routing anchors not found")

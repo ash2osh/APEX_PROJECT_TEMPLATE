@@ -479,6 +479,246 @@ theme universal-theme (
         self.assertNotIn("diff", targets)
         self.assertNotIn("c1_total_days", targets)
 
+    def test_resolves_owner_substitution_prefixed_database_objects(self) -> None:
+        result = self.extract(
+            """page 3 (
+    region history (
+        source {
+            sqlQuery:
+                ```sql
+                select h.id
+                  from #OWNER#.OOW_DEMO_SALES_HISTORY h
+                  join "#OWNER#"."OOW_DEMO_ITEMS" i on i.id = h.item_id
+                ```
+        }
+    )
+)
+"""
+        )
+
+        edges = self.edge_tuples(result)
+        region = "apex_app_102_page_3_region_history"
+        self.assertIn((region, "oow_demo_sales_history", "reads_from"), edges)
+        self.assertIn((region, "oow_demo_items", "reads_from"), edges)
+        targets = {target for _, target, _ in edges}
+        self.assertFalse(
+            [target for target in targets if target.startswith("owner_")],
+            "the #OWNER# substitution prefix must not become part of a node id",
+        )
+
+    def test_does_not_treat_comment_markers_inside_values_as_comments(self) -> None:
+        result = self.extract(
+            """page 4 (
+    region promo (
+        link: "https://apps.example.com/ords/f?p=102:7:0::NO"
+    )
+    region notes (
+        help {
+            text: "an unterminated /* marker inside a value"
+        }
+        source {
+            sqlQuery: select id from notes_table
+        }
+    )
+)
+"""
+        )
+
+        self.assertIsNone(
+            result.get("error"),
+            "a comment marker inside a quoted value must not break the parse",
+        )
+        edges = self.edge_tuples(result)
+        self.assertIn(
+            ("apex_app_102_page_4_region_promo", "apex_app_102_page_7", "navigates_to"),
+            edges,
+            "a '//' inside a URL value must not be treated as a line comment",
+        )
+        self.assertIn(
+            ("apex_app_102_page_4_region_notes", "notes_table", "reads_from"),
+            edges,
+        )
+
+    def test_does_not_treat_the_for_update_clause_as_a_write(self) -> None:
+        result = self.extract(
+            """page 5 (
+    region locked (
+        source {
+            sqlQuery: select id from orders_table for update of quantity nowait
+        }
+    )
+)
+"""
+        )
+
+        edges = self.edge_tuples(result)
+        region = "apex_app_102_page_5_region_locked"
+        self.assertIn((region, "orders_table", "reads_from"), edges)
+        self.assertFalse(
+            [edge for edge in edges if edge[2] == "writes_to"],
+            "a FOR UPDATE row-lock clause is not a write",
+        )
+
+    def test_does_not_treat_a_delete_target_as_a_read(self) -> None:
+        result = self.extract(
+            """page 6 (
+    process purge (
+        source {
+            plsqlCode: delete from purge_table where id = 1;
+        }
+    )
+)
+"""
+        )
+
+        edges = self.edge_tuples(result)
+        process = "apex_app_102_page_6_process_purge"
+        self.assertIn((process, "purge_table", "writes_to"), edges)
+        self.assertNotIn(
+            (process, "purge_table", "reads_from"),
+            edges,
+            "DELETE FROM is a write, not a read",
+        )
+
+    def test_does_not_treat_a_dml_column_list_as_a_procedure_call(self) -> None:
+        result = self.extract(
+            """page 7 (
+    process audit (
+        source {
+            plsqlCode: insert into app_data.audit_log(id) values (1);
+        }
+    )
+)
+"""
+        )
+
+        edges = self.edge_tuples(result)
+        process = "apex_app_102_page_7_process_audit"
+        self.assertIn((process, "app_data_audit_log", "writes_to"), edges)
+        self.assertNotIn(
+            (process, "app_data_audit_log", "calls"),
+            edges,
+            "a schema-qualified INSERT target is not a procedure call",
+        )
+
+    def test_ignores_schema_qualified_dual(self) -> None:
+        result = self.extract(
+            """page 9 (
+    region clock (
+        source {
+            sqlQuery: select systimestamp from sys.dual
+        }
+    )
+)
+"""
+        )
+
+        targets = {target for _, target, _ in self.edge_tuples(result)}
+        self.assertFalse(
+            [target for target in targets if "dual" in target],
+            "sys.dual is not application architecture",
+        )
+
+    def test_declared_authorization_replaces_an_earlier_synthetic_reference(self) -> None:
+        result = self.extract(
+            """app 102 (
+    page 10 (
+        security {
+            authorizationScheme: admin-only
+        }
+    )
+    authorization admin-only (
+        name: Administrators Only
+    )
+)
+"""
+        )
+
+        node_id = "apex_app_102_authorization_admin_only"
+        nodes = {node["id"]: node for node in result["nodes"]}
+        self.assertIn(node_id, nodes)
+        node = nodes[node_id]
+        self.assertNotIn(
+            "synthetic_reference",
+            node.get("metadata", {}),
+            "the real declaration must replace a forward reference",
+        )
+        self.assertEqual(
+            node["source_location"],
+            "L7",
+            "the node must point at the declaration, not the first reference",
+        )
+
+    def test_disambiguates_repeated_component_identifiers_in_one_page(self) -> None:
+        result = self.extract(
+            """page 11 (
+    region items (
+        source {
+            sqlQuery: select id from first_table
+        }
+    )
+    region items (
+        source {
+            sqlQuery: select id from second_table
+        }
+    )
+)
+"""
+        )
+
+        containment = {
+            target for source, target, relation in self.edge_tuples(result)
+            if relation == "contains" and source == "apex_app_102_page_11"
+        }
+        self.assertEqual(
+            len(containment),
+            2,
+            "two sibling declarations must not collapse into one node",
+        )
+        reads = {
+            (source, target) for source, target, relation in self.edge_tuples(result)
+            if relation == "reads_from"
+        }
+        self.assertEqual(
+            len({source for source, _ in reads}),
+            2,
+            "each sibling region must own its own database dependency",
+        )
+
+    def test_database_reference_labels_do_not_depend_on_first_seen_spelling(self) -> None:
+        template = """page 12 (
+    region one (
+        source {{
+            sqlQuery: select id from {first}
+        }}
+    )
+    region two (
+        source {{
+            sqlQuery: select id from {second}
+        }}
+    )
+)
+"""
+        forward = self.extract(
+            template.format(first="Orders_Table", second="ORDERS_TABLE"),
+            relative="apps/DEMO/102/pages/p00012-a.apx",
+        )
+        reverse = self.extract(
+            template.format(first="ORDERS_TABLE", second="Orders_Table"),
+            relative="apps/DEMO/102/pages/p00012-b.apx",
+        )
+
+        def label_of(result: dict) -> str:
+            return next(
+                node["label"] for node in result["nodes"] if node["id"] == "orders_table"
+            )
+
+        self.assertEqual(
+            label_of(forward),
+            label_of(reverse),
+            "reference labels must be canonical, not order-dependent",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

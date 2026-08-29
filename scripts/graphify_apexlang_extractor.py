@@ -46,10 +46,12 @@ PROPERTY_RE = re.compile(r'^\s*([A-Za-z][A-Za-z0-9]*)\s*:\s*(.*?)\s*$')
 REFERENCE_RE = re.compile(r'^\s*([A-Za-z][A-Za-z0-9]*)\s*:\s*@([^\s\]}]+)')
 PAGE_TARGET_RE = re.compile(r'\bpage\s*:\s*(\d+)\b', re.IGNORECASE)
 APEX_URL_PAGE_RE = re.compile(r'f\?p=[^:\s]*:(\d+):', re.IGNORECASE)
-SQL_IDENTIFIER = (
-    r'(?:"[^"]+"|[A-Za-z][A-Za-z0-9_$#]*)'
-    r'(?:\s*\.\s*(?:"[^"]+"|[A-Za-z][A-Za-z0-9_$#]*))*'
-)
+# A name part is a quoted identifier, an APEX substitution placeholder such as
+# #OWNER#, or a plain identifier. Placeholders appear as a schema qualifier in
+# exported queries and must not stop the match or leak into the node id.
+SQL_NAME_PART = r'(?:"[^"]+"|#[A-Za-z0-9_]+#|[A-Za-z][A-Za-z0-9_$#]*)'
+SQL_IDENTIFIER = rf'{SQL_NAME_PART}(?:\s*\.\s*{SQL_NAME_PART})*'
+SUBSTITUTION_PART_RE = re.compile(r'#[^#]*#')
 READ_RE = re.compile(rf'\b(?:FROM|JOIN)\s+({SQL_IDENTIFIER})', re.IGNORECASE)
 WRITE_RE = re.compile(
     rf'\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|MERGE\s+INTO)\s+({SQL_IDENTIFIER})',
@@ -193,17 +195,44 @@ def _strip_sql_comments_and_literals(text: str) -> str:
 
 
 def _reference_label(value: str) -> str:
-    return re.sub(r"\s*\.\s*", ".", value.strip())
+    """Return a canonical database object name.
+
+    Quoting is removed, a leading APEX substitution placeholder such as
+    #OWNER# is dropped, and the result is upper-cased so that a name's label
+    does not depend on which file happened to be parsed first.
+    """
+    parts = []
+    for part in re.split(r"\s*\.\s*", value.strip()):
+        if len(part) >= 2 and part[0] == part[-1] == '"':
+            part = part[1:-1]
+        parts.append(part)
+    while len(parts) > 1 and SUBSTITUTION_PART_RE.fullmatch(parts[0]):
+        parts.pop(0)
+    return ".".join(part.upper() for part in parts)
+
+
+def _is_ignored_object(name: str) -> bool:
+    """Ignore utility objects whether or not they are schema-qualified."""
+    return name.rsplit(".", 1)[-1].casefold() in IGNORED_SQL_OBJECTS
+
+
+def _blank_out(pattern: str, text: str) -> str:
+    """Blank matches of *pattern* while preserving offsets and line breaks."""
+    return re.sub(
+        pattern,
+        lambda match: "".join("\n" if char == "\n" else " " for char in match.group(0)),
+        text,
+        flags=re.IGNORECASE,
+    )
 
 
 def _sql_dependencies(text: str) -> tuple[set[str], set[str], set[str]]:
     clean = _strip_sql_comments_and_literals(text)
-    reads_clean = re.sub(
-        r'\bEXTRACT\s*\([^()]*\)',
-        lambda match: "".join("\n" if char == "\n" else " " for char in match.group(0)),
-        clean,
-        flags=re.IGNORECASE,
-    )
+    # DELETE FROM names a write target, not a queried source.
+    reads_clean = _blank_out(r'\bDELETE\s+FROM\b', clean)
+    reads_clean = _blank_out(r'\bEXTRACT\s*\([^()]*\)', reads_clean)
+    # FOR UPDATE is a row-lock clause; its next token is not a write target.
+    writes_clean = _blank_out(r'\bFOR\s+UPDATE\b', clean)
     cte_names = {
         _reference_label(match.group(1)).casefold()
         for match in re.finditer(
@@ -217,25 +246,37 @@ def _sql_dependencies(text: str) -> tuple[set[str], set[str], set[str]]:
         for match in READ_RE.finditer(reads_clean)
         if _reference_label(match.group(1)).casefold() not in cte_names
     }
-    writes = {_reference_label(match.group(1)) for match in WRITE_RE.finditer(clean)}
+    writes = {_reference_label(match.group(1)) for match in WRITE_RE.finditer(writes_clean)}
     calls = {
         _reference_label(match.group(1))
         for pattern in (PAREN_CALL_RE, STATEMENT_CALL_RE)
         for match in pattern.finditer(clean)
     }
-    reads = {name for name in reads if name.casefold() not in IGNORED_SQL_OBJECTS}
+    reads = {name for name in reads if not _is_ignored_object(name)}
+    writes = {name for name in writes if not _is_ignored_object(name)}
+    # A DML target followed by its column list looks exactly like a call.
+    write_keys = {name.casefold() for name in writes}
     calls = {
         name
         for name in calls
-        if not name.casefold().startswith(("apex_", "sys.", "dbms_"))
+        if name.casefold() not in write_keys
+        and not name.casefold().startswith(("apex_", "sys.", "dbms_"))
     }
     return reads, writes, calls
 
 
 def _strip_comments(line: str, in_block_comment: bool) -> tuple[str, bool]:
+    """Remove APEXlang comments, ignoring markers inside quoted values.
+
+    A comment marker inside a value is data, not syntax. Treating one as
+    syntax truncates a URL at its scheme, and an unterminated /* inside a
+    quoted value would otherwise swallow the remainder of the file.
+    """
     output: list[str] = []
     index = 0
+    quote: str | None = None
     while index < len(line):
+        char = line[index]
         if in_block_comment:
             end = line.find("*/", index)
             if end < 0:
@@ -243,13 +284,25 @@ def _strip_comments(line: str, in_block_comment: bool) -> tuple[str, bool]:
             in_block_comment = False
             index = end + 2
             continue
+        if quote is not None:
+            output.append(char)
+            if char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in {'"', "'"}:
+            quote = char
+            output.append(char)
+            index += 1
+            continue
         if line.startswith("/*", index):
             in_block_comment = True
             index += 2
             continue
-        if line.startswith("//", index):
+        # "//" after a colon is a URL scheme separator, not a comment.
+        if line.startswith("//", index) and not (index and line[index - 1] == ":"):
             break
-        output.append(line[index])
+        output.append(char)
         index += 1
     return "".join(output), in_block_comment
 
@@ -265,6 +318,7 @@ def parse_apexlang(text: str, path: Path) -> dict[str, object]:
     edges: list[dict] = []
     edge_keys: set[tuple[str, str, str, str, str]] = set()
     frames: list[Frame] = []
+    declared_ids: dict[str, int] = {}
     in_fence = False
     in_block_comment = False
     pending_property: str | None = None
@@ -273,11 +327,19 @@ def parse_apexlang(text: str, path: Path) -> dict[str, object]:
     fence_lines: list[str] = []
     fence_is_database_code = False
 
+    def is_synthetic(node: dict) -> bool:
+        return bool(node.get("metadata", {}).get("synthetic_reference"))
+
     def add_node(node: dict) -> None:
         existing = node_by_id.get(node["id"])
         if existing is None:
             node_by_id[node["id"]] = node
             nodes.append(node)
+            return
+        # A forward reference is a placeholder; the declaration is the truth.
+        if is_synthetic(existing) and not is_synthetic(node):
+            existing.clear()
+            existing.update(node)
 
     def add_reference_node(label: str) -> str:
         node_id = make_id(label)
@@ -287,6 +349,12 @@ def parse_apexlang(text: str, path: Path) -> dict[str, object]:
             node_by_id[node_id] = node
             nodes.append(node)
         return node_id
+
+    def unique_declaration_id(base: str) -> str:
+        """Keep the first declaration's id stable and suffix later siblings."""
+        seen = declared_ids.get(base, 0) + 1
+        declared_ids[base] = seen
+        return base if seen == 1 else f"{base}_{seen}"
 
     def add_edge(source: str, target: str, relation: str, line: int) -> None:
         candidate = _edge(source, target, relation, source_path, line)
@@ -373,10 +441,9 @@ def parse_apexlang(text: str, path: Path) -> dict[str, object]:
             elif kind:
                 if kind in {"region", "process", "dynamic_action"}:
                     parent_id = _nearest_page(frames) or app_node_id
-                    node_id = make_id(parent_id, kind, identifier)
                 else:
                     parent_id = app_node_id
-                    node_id = make_id(parent_id, kind, identifier)
+                node_id = unique_declaration_id(make_id(parent_id, kind, identifier))
                 add_node(
                     _node(node_id, _label(kind, identifier), source_path, line_number,
                           component_type=kind, application_id=app_id,
