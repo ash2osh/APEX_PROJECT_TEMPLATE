@@ -207,8 +207,8 @@ def patch_graphify_dir(base: Path) -> bool:
         return False
 
     try:
-        detect_path.write_text(patched_detect, encoding="utf-8")
-        extract_path.write_text(patched_extract, encoding="utf-8")
+        detect_path.write_text(patched_detect, encoding="utf-8", newline="")
+        extract_path.write_text(patched_extract, encoding="utf-8", newline="")
         shutil.copyfile(CANONICAL_EXTRACTOR, installed_path)
         verified, reason = verify_installation(base)
         if not verified:
