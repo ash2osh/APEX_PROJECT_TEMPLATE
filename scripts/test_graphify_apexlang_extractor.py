@@ -60,6 +60,37 @@ class ApexlangExtractorTests(unittest.TestCase):
             "extract_apexlang(path) is missing",
         )
 
+    def test_reads_every_table_in_a_comma_separated_from_list(self) -> None:
+        reads, _writes, _calls = self.module._sql_dependencies(
+            "select o.id from orders o, customers c, order_items i where o.id = c.id"
+        )
+        self.assertEqual(reads, {"ORDERS", "CUSTOMERS", "ORDER_ITEMS"})
+
+    def test_does_not_treat_a_cte_with_a_column_list_as_a_table(self) -> None:
+        reads, _writes, _calls = self.module._sql_dependencies(
+            "with t (a, b) as (select 1, 2 from dual) select a from t, orders"
+        )
+        self.assertEqual(reads, {"ORDERS"})
+
+    def test_does_not_treat_the_table_operator_as_a_table(self) -> None:
+        reads, _writes, _calls = self.module._sql_dependencies(
+            "select 1 from table(pkg.pipe(x)), orders"
+        )
+        self.assertEqual(reads, {"ORDERS"})
+
+    def test_stops_a_from_list_at_a_clause_keyword(self) -> None:
+        reads, _writes, _calls = self.module._sql_dependencies(
+            "select 1 from orders group by id"
+        )
+        self.assertEqual(reads, {"ORDERS"})
+
+    def test_reads_tables_from_multiple_ctes_and_the_main_query(self) -> None:
+        reads, _writes, _calls = self.module._sql_dependencies(
+            "with a as (select 1 x from dual), b (y) as (select 2 from dual) "
+            "select 1 from a, b, orders"
+        )
+        self.assertEqual(reads, {"ORDERS"})
+
     def test_extracts_architectural_containment_and_source_lines(self) -> None:
         result = self.extract(
             """page 4 (

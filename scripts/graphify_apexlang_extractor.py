@@ -52,7 +52,25 @@ APEX_URL_PAGE_RE = re.compile(r'f\?p=[^:\s]*:(\d+):', re.IGNORECASE)
 SQL_NAME_PART = r'(?:"[^"]+"|#[A-Za-z0-9_]+#|[A-Za-z][A-Za-z0-9_$#]*)'
 SQL_IDENTIFIER = rf'{SQL_NAME_PART}(?:\s*\.\s*{SQL_NAME_PART})*'
 SUBSTITUTION_PART_RE = re.compile(r'#[^#]*#')
-READ_RE = re.compile(rf'\b(?:FROM|JOIN)\s+({SQL_IDENTIFIER})', re.IGNORECASE)
+FROM_START_RE = re.compile(r'\b(?:FROM|JOIN)\b', re.IGNORECASE)
+# Keywords that end a FROM list. SELECT/WITH/AS are included because an
+# unbalanced closing parenthesis is not the only way a clause can end.
+FROM_STOP_RE = re.compile(
+    r'\b(?:WHERE|GROUP|ORDER|HAVING|CONNECT|START|UNION|INTERSECT|MINUS|MODEL'
+    r'|FETCH|OFFSET|FOR|JOIN|INNER|LEFT|RIGHT|FULL|CROSS|NATURAL|ON|USING|SET'
+    r'|RETURNING|INTO|VALUES|SELECT|WITH|AS)\b',
+    re.IGNORECASE,
+)
+FROM_ITEM_RE = re.compile(rf'^\s*({SQL_IDENTIFIER})')
+# Row sources that are syntax, not tables.
+FROM_KEYWORDS = {"table", "lateral", "xmltable", "json_table", "only", "the"}
+# A CTE may carry a column list, and may be marked (NOT) MATERIALIZED. Missing
+# one makes its later FROM reference look like a real table.
+CTE_RE = re.compile(
+    rf'\b({SQL_IDENTIFIER})\s*(?:\([^()]*\))?\s+AS\s*'
+    rf'(?:NOT\s+MATERIALIZED\s+|MATERIALIZED\s+)?\(\s*(?:WITH|SELECT)\b',
+    re.IGNORECASE,
+)
 WRITE_RE = re.compile(
     rf'\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|MERGE\s+INTO)\s+({SQL_IDENTIFIER})',
     re.IGNORECASE,
@@ -226,6 +244,40 @@ def _blank_out(pattern: str, text: str) -> str:
     )
 
 
+def _from_items(text: str):
+    """Yield every top-level item of every FROM/JOIN clause in *text*.
+
+    A regex cannot do this: the clause ends at a keyword, at a top-level comma,
+    or at a closing parenthesis that belongs to an enclosing clause, and a lazy
+    match happily runs past that parenthesis into the next CTE.
+    """
+    for start in FROM_START_RE.finditer(text):
+        index = item_start = start.end()
+        depth = 0
+        while index < len(text):
+            char = text[index]
+            if char == '(':
+                depth += 1
+            elif char == ')':
+                if depth == 0:
+                    break
+                depth -= 1
+            elif char == ',' and depth == 0:
+                yield text[item_start:index]
+                item_start = index + 1
+            elif depth == 0 and (char.isalpha() or char == '_'):
+                if FROM_STOP_RE.match(text, index):
+                    if index > item_start:
+                        yield text[item_start:index]
+                    item_start = None
+                    break
+                index += re.match(r'[A-Za-z0-9_$#]*', text[index:]).end()
+                continue
+            index += 1
+        if item_start is not None:
+            yield text[item_start:index]
+
+
 def _sql_dependencies(text: str) -> tuple[set[str], set[str], set[str]]:
     clean = _strip_sql_comments_and_literals(text)
     # DELETE FROM names a write target, not a queried source.
@@ -235,17 +287,18 @@ def _sql_dependencies(text: str) -> tuple[set[str], set[str], set[str]]:
     writes_clean = _blank_out(r'\bFOR\s+UPDATE\b', clean)
     cte_names = {
         _reference_label(match.group(1)).casefold()
-        for match in re.finditer(
-            rf'\b({SQL_IDENTIFIER})\s+AS\s*\(\s*SELECT\b',
-            reads_clean,
-            re.IGNORECASE,
-        )
+        for match in CTE_RE.finditer(reads_clean)
     }
-    reads = {
-        _reference_label(match.group(1))
-        for match in READ_RE.finditer(reads_clean)
-        if _reference_label(match.group(1)).casefold() not in cte_names
-    }
+    reads = set()
+    for item in _from_items(reads_clean):
+        item_match = FROM_ITEM_RE.match(item)
+        if not item_match:
+            continue
+        if item_match.group(1).casefold() in FROM_KEYWORDS:
+            continue
+        label = _reference_label(item_match.group(1))
+        if label.casefold() not in cte_names:
+            reads.add(label)
     writes = {_reference_label(match.group(1)) for match in WRITE_RE.finditer(writes_clean)}
     calls = {
         _reference_label(match.group(1))
