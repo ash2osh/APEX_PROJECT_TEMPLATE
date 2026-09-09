@@ -134,6 +134,48 @@ class GraphifyPatchTests(unittest.TestCase):
         self.assertEqual(package_before, self.snapshot_tree(self.root))
         self.assertEqual(scratch_before, self.snapshot_tree(scratch))
 
+    def test_public_verify_fallback_discovery_does_not_mutate_package(self) -> None:
+        fake_parent = Path(tempfile.mkdtemp(prefix="graphify-fallback-test."))
+        fake_package = fake_parent / "graphify"
+        fake_package.mkdir()
+        (fake_package / "__init__.py").write_text(
+            "# fake Graphify package\n", encoding="utf-8"
+        )
+        self.write_package_at(fake_package)
+        self.assertTrue(MODULE.patch_graphify_dir(fake_package))
+        package_before = self.snapshot_tree(fake_package)
+        original_path = list(sys.path)
+        had_graphify = "graphify" in sys.modules
+        original_graphify = sys.modules.get("graphify")
+        previous_dont_write_bytecode = sys.dont_write_bytecode
+
+        sys.path.insert(0, str(fake_parent))
+        sys.modules.pop("graphify", None)
+        sys.dont_write_bytecode = False
+        try:
+            with (
+                mock.patch.object(MODULE.shutil, "which", return_value=None),
+                mock.patch.object(MODULE.glob, "glob", return_value=[]),
+            ):
+                self.assertEqual(MODULE.main(["--verify"]), 0)
+            package_after = self.snapshot_tree(fake_package)
+        finally:
+            sys.path[:] = original_path
+            if had_graphify:
+                sys.modules["graphify"] = original_graphify
+            else:
+                sys.modules.pop("graphify", None)
+            sys.dont_write_bytecode = previous_dont_write_bytecode
+            shutil.rmtree(fake_parent)
+
+        self.assertEqual(package_before, package_after)
+        self.assertEqual(sys.path, original_path)
+        if had_graphify:
+            self.assertIs(sys.modules.get("graphify"), original_graphify)
+        else:
+            self.assertNotIn("graphify", sys.modules)
+        self.assertEqual(sys.dont_write_bytecode, previous_dont_write_bytecode)
+
     def test_verify_mode_checks_all_candidates_after_a_malformed_installation(
         self,
     ) -> None:
@@ -313,6 +355,7 @@ class GraphifyPatchTests(unittest.TestCase):
         run.assert_called_once_with(
             [
                 sys.executable,
+                "-B",
                 "-c",
                 "import graphify, os; print(os.path.dirname(graphify.__file__))",
             ],

@@ -52,6 +52,7 @@ def find_graphify_dirs():
             located = subprocess.run(
                 [
                     interpreter,
+                    "-B",
                     "-c",
                     "import graphify, os; print(os.path.dirname(graphify.__file__))",
                 ],
@@ -69,7 +70,12 @@ def find_graphify_dirs():
     dirs = []
     # 2. Fall back to this interpreter, then to a filesystem sweep.
     try:
-        import graphify
+        previous_dont_write_bytecode = sys.dont_write_bytecode
+        try:
+            sys.dont_write_bytecode = True
+            import graphify
+        finally:
+            sys.dont_write_bytecode = previous_dont_write_bytecode
         dirs.append(os.path.dirname(graphify.__file__))
     except Exception:
         pass
