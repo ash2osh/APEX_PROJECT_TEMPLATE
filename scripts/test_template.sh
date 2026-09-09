@@ -274,7 +274,7 @@ if [ -n "$PWSH" ]; then
   fi
   test -f "$LOCK_ROOT/$STALE_LOCK_KEY.lock" || fail "Bash holder did not create the shared lock file"
   if "$PWSH" -NoProfile -File "$TEST_REPO/ps-scripts/replace_mirror.ps1" \
-      -StagedDir "$TEST_REPO/scratch/cross-ps-contender" -Destination "database/mirror"; then
+      "$TEST_REPO/scratch/cross-ps-contender" "database/mirror"; then
     : > "$CROSS_GIT_RELEASE"
     wait "$CROSS_HOLDER_PID" || true
     fail "PowerShell stole a live Bash mirror lock"
@@ -288,20 +288,20 @@ if [ -n "$PWSH" ]; then
   printf 'new\n' > "$TEST_REPO/scratch/staged-ps/new.txt"
 
   "$PWSH" -NoProfile -File "$TEST_REPO/ps-scripts/replace_mirror.ps1" \
-    -StagedDir "$TEST_REPO/scratch/staged-ps" -Destination "database/mirror-ps" \
+    "$TEST_REPO/scratch/staged-ps" "database/mirror-ps" \
     || fail "PowerShell replace_mirror.ps1 failed on a valid replacement"
   test -f "$TEST_REPO/database/mirror-ps/new.txt" || fail "PowerShell replace_mirror.ps1 did not install new mirror content"
   test ! -e "$TEST_REPO/database/mirror-ps/stale.txt" || fail "PowerShell replace_mirror.ps1 retained stale mirror content"
 
   mkdir -p "$TEST_REPO/scratch/empty-staged-ps"
   if "$PWSH" -NoProfile -File "$TEST_REPO/ps-scripts/replace_mirror.ps1" \
-      -StagedDir "$TEST_REPO/scratch/empty-staged-ps" -Destination "database/empty-ps"; then
+      "$TEST_REPO/scratch/empty-staged-ps" "database/empty-ps"; then
     fail "PowerShell replace_mirror.ps1 accepted empty staging"
   fi
 
   printf 'not a directory\n' > "$TEST_REPO/scratch/file-staged-ps"
   if "$PWSH" -NoProfile -File "$TEST_REPO/ps-scripts/replace_mirror.ps1" \
-      -StagedDir "$TEST_REPO/scratch/file-staged-ps" -Destination "database/file-ps"; then
+      "$TEST_REPO/scratch/file-staged-ps" "database/file-ps"; then
     fail "PowerShell replace_mirror.ps1 accepted a file as staging input"
   fi
 
@@ -309,7 +309,7 @@ if [ -n "$PWSH" ]; then
   mkdir -p "$TEST_REPO/scratch/dirty-staged-ps"
   printf 'replacement\n' > "$TEST_REPO/scratch/dirty-staged-ps/new.txt"
   if "$PWSH" -NoProfile -File "$TEST_REPO/ps-scripts/replace_mirror.ps1" \
-      -StagedDir "$TEST_REPO/scratch/dirty-staged-ps" -Destination "database/mirror-ps"; then
+      "$TEST_REPO/scratch/dirty-staged-ps" "database/mirror-ps"; then
     fail "PowerShell replace_mirror.ps1 did not refuse a dirty mirror"
   fi
 

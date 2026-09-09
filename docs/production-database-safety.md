@@ -80,11 +80,12 @@ ownership check, and no grant audit.
 ## Export behavior
 
 Application and database exports stage under `scratch/`. They read metadata,
-never export table data, and replace only exact targets after every required
-export succeeds and Git confirms those targets have no local changes. Database
-backup completes its table and code passes before replacing either schema
-mirror. Application export does not invoke validation; validation is a
-separate operation.
+never export table data, and replace only exact targets
+after every required export succeeds and Git confirms those targets have no
+local changes. When more than one mirror is involved, all of them are locked
+and replaced together: a failure part-way through rolls every completed
+replacement back, so the tree is never left half-updated. Application export
+does not invoke validation; validation is a separate operation.
 
 Because there is no non-owner requirement, an APEX application can be exported
 in production through its parsing schema, which is the account Oracle documents

@@ -1,19 +1,25 @@
 #Requires -Version 5.1
-# Replace one generated mirror with a completed staging directory.
+# Replace generated mirrors with completed staging directories atomically.
 param(
-  [Parameter(Mandatory = $true)][string]$StagedDir,
-  [Parameter(Mandatory = $true)][string]$Destination
+  [Parameter(Mandatory = $true, ValueFromRemainingArguments = $true)]
+  [string[]]$Pairs
 )
 
 $ErrorActionPreference = "Stop"
+if ($Pairs.Count -lt 2 -or $Pairs.Count % 2 -ne 0) {
+  throw "usage: replace_mirror.ps1 <staged-dir> <destination> [<staged-dir> <destination> ...]"
+}
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$scratchPath = Join-Path $repoRoot "scratch"
+New-Item -ItemType Directory -Force -Path $scratchPath | Out-Null
+$scratchRoot = (Resolve-Path -LiteralPath $scratchPath).Path
+
+function Test-MirrorPair {
+  param([string]$StagedDir, [string]$Destination, [int]$Index)
 if (-not (Test-Path -LiteralPath $StagedDir -PathType Container)) {
   throw "staging directory does not exist or is not a directory: $StagedDir"
 }
 $stagedPath = (Resolve-Path -LiteralPath $StagedDir).Path
-$scratchPath = Join-Path $repoRoot "scratch"
-New-Item -ItemType Directory -Force -Path $scratchPath | Out-Null
-$scratchRoot = (Resolve-Path -LiteralPath $scratchPath).Path
 
 if (-not $stagedPath.StartsWith($scratchRoot + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
   throw "staging directory must be inside scratch/: $stagedPath"
@@ -87,6 +93,19 @@ $mirrorName = Split-Path -Leaf $destinationPath
 $backupPath = Join-Path $scratchPath (".mirror-backup.{0}.{1}" -f $mirrorName, $PID)
 if (Test-Path -LiteralPath $backupPath) {
   throw "temporary replacement path already exists: $backupPath"
+}
+
+  return [PSCustomObject]@{
+    StagedPath = $stagedPath
+    DestinationPath = $destinationPath
+    CanonicalRelative = $canonicalRelativeDestination
+    BackupPath = Join-Path $scratchPath (".mirror-backup.{0}.{1}.{2}" -f $mirrorName, $PID, $Index)
+  }
+}
+
+$validated = @()
+for ($i = 0; $i -lt $Pairs.Count; $i += 2) {
+  $validated += Test-MirrorPair -StagedDir $Pairs[$i] -Destination $Pairs[$i + 1] -Index ($i / 2)
 }
 
 # Lock protocol v1. Both implementations must agree, because on Windows a
@@ -172,47 +191,65 @@ function Enter-MirrorLock([string]$LockPath, [string]$CanonicalRelative) {
 
 $lockRoot = Join-Path $scratchRoot ".mirror-locks"
 New-Item -ItemType Directory -Force -Path $lockRoot | Out-Null
-# SHA256::HashData and Convert::ToHexString are .NET 5+, so they are missing on
-# Windows PowerShell 5.1. Create()/ComputeHash and BitConverter work on both.
-$sha256 = [System.Security.Cryptography.SHA256]::Create()
+$lockHandles = @()
+$installed = @()
+$movedDestination = @()
 try {
-  $hashBytes = $sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($canonicalRelativeDestination))
-} finally {
-  $sha256.Dispose()
-}
-$lockName = ([System.BitConverter]::ToString($hashBytes) -replace '-', '').Substring(0, 16).ToLowerInvariant() + ".lock"
-$lockPath = Join-Path $lockRoot $lockName
-$lockHandle = Enter-MirrorLock -LockPath $lockPath -CanonicalRelative $canonicalRelativeDestination
-
-$hadOldMirror = Test-Path -LiteralPath $destinationPath
-try {
-  # Recheck after taking the lock to minimize the check-to-replace window.
-  $dirty = @(git -C $repoRoot status --porcelain --untracked-files=all -- $destinationPath)
-  if ($LASTEXITCODE -ne 0) {
-    throw "unable to recheck Git status for mirror: $canonicalRelativeDestination"
-  }
-  if (-not [string]::IsNullOrWhiteSpace(($dirty -join "`n"))) {
-    throw "refusing to replace dirty mirror: $canonicalRelativeDestination"
-  }
-  if ($hadOldMirror) {
-    Move-Item -LiteralPath $destinationPath -Destination $backupPath
-  }
-  Move-Item -LiteralPath $stagedPath -Destination $destinationPath
-} catch {
-  $originalErrorMessage = $_.Exception.Message
-  if ((Test-Path -LiteralPath $backupPath) -and -not (Test-Path -LiteralPath $destinationPath)) {
+  foreach ($pair in $validated) {
+    # SHA256::HashData and Convert::ToHexString are .NET 5+, so they are
+    # missing on Windows PowerShell 5.1. Create()/ComputeHash and BitConverter
+    # work on both.
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
     try {
-      Move-Item -LiteralPath $backupPath -Destination $destinationPath -ErrorAction Stop
-    } catch {
-      throw "replacement failed and rollback failed; old mirror is at $backupPath. Original error: $originalErrorMessage"
+      $hashBytes = $sha256.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($pair.CanonicalRelative))
+    } finally { $sha256.Dispose() }
+    $lockName = ([System.BitConverter]::ToString($hashBytes) -replace '-', '').Substring(0, 16).ToLowerInvariant() + ".lock"
+    $lockPath = Join-Path $lockRoot $lockName
+    $lockHandle = Enter-MirrorLock -LockPath $lockPath -CanonicalRelative $pair.CanonicalRelative
+    $pair | Add-Member -NotePropertyName LockPath -NotePropertyValue $lockPath
+    $lockHandles += $lockHandle
+  }
+
+  # Recheck every mirror after taking every lock.
+  foreach ($pair in $validated) {
+    $dirty = @(git -C $repoRoot status --porcelain --untracked-files=all -- $pair.DestinationPath)
+    if ($LASTEXITCODE -ne 0) { throw "unable to recheck Git status for mirror: $($pair.CanonicalRelative)" }
+    if (-not [string]::IsNullOrWhiteSpace(($dirty -join "`n"))) {
+      throw "refusing to replace dirty mirror: $($pair.CanonicalRelative)"
     }
   }
-  throw
+
+  foreach ($pair in $validated) {
+    if (Test-Path -LiteralPath $pair.DestinationPath) {
+      Move-Item -LiteralPath $pair.DestinationPath -Destination $pair.BackupPath
+      $movedDestination += $pair
+    }
+    Move-Item -LiteralPath $pair.StagedPath -Destination $pair.DestinationPath
+    $installed += $pair
+  }
+} catch {
+  $originalErrorMessage = $_.Exception.Message
+  # Reverse order: undo the staged move first, then restore the old mirror.
+  [array]::Reverse($installed)
+  foreach ($pair in $installed) {
+    Move-Item -LiteralPath $pair.DestinationPath -Destination $pair.StagedPath -ErrorAction SilentlyContinue
+  }
+  [array]::Reverse($movedDestination)
+  foreach ($pair in $movedDestination) {
+    Move-Item -LiteralPath $pair.BackupPath -Destination $pair.DestinationPath -ErrorAction SilentlyContinue
+  }
+  throw "mirror replacement failed and was rolled back. Original error: $originalErrorMessage"
 } finally {
-  if ($null -ne $lockHandle) { $lockHandle.Dispose() }
-  if (Test-Path -LiteralPath $lockPath -PathType Leaf) { Remove-Item -LiteralPath $lockPath -Force }
+  foreach ($handle in $lockHandles) { if ($null -ne $handle) { $handle.Dispose() } }
+  foreach ($pair in $validated) {
+    if ($pair.PSObject.Properties.Name -contains 'LockPath' -and (Test-Path -LiteralPath $pair.LockPath -PathType Leaf)) {
+      Remove-Item -LiteralPath $pair.LockPath -Force -ErrorAction SilentlyContinue
+    }
+  }
 }
 
-if (Test-Path -LiteralPath $backupPath) {
-  Remove-Item -LiteralPath $backupPath -Recurse -Force
+foreach ($pair in $validated) {
+  if (Test-Path -LiteralPath $pair.BackupPath) {
+    Remove-Item -LiteralPath $pair.BackupPath -Recurse -Force
+  }
 }

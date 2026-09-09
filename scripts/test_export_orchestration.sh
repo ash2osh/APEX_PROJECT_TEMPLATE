@@ -17,8 +17,10 @@ fail() {
 
 commit_all() {
   git -C "$TEST_REPO" add -A
-  git -C "$TEST_REPO" -c user.name=TemplateTest -c user.email=test@example.invalid \
-    commit -qm "$1"
+  if ! git -C "$TEST_REPO" diff --cached --quiet; then
+    git -C "$TEST_REPO" -c user.name=TemplateTest -c user.email=test@example.invalid \
+      commit -qm "$1"
+  fi
 }
 
 mkdir -p "$TEST_REPO/scripts" "$TEST_ROOT/bin"
@@ -42,6 +44,12 @@ fi
 if [ "${FAKE_EXPORT_NOTHING_APP_ID:-}" = "$app_id" ]; then
   exit 0
 fi
+if [ "${FAKE_DIRTY_MIRROR_APP_ID:-}" = "$app_id" ]; then
+  # Dirty a *different* application's destination while this one exports, so
+  # the replacement phase fails after the pre-flight has already passed.
+  printf 'appeared mid-run\n' \
+    > "$FAKE_REPO_ROOT/apps/$schema/${FAKE_DIRTY_MIRROR_TARGET}/uncommitted.apx"
+fi
 alias_names="app-${app_id}-${FAKE_ALIAS_SUFFIX:-default}"
 if [ "${FAKE_AMBIGUOUS_APP_ID:-}" = "$app_id" ]; then
   alias_names="$alias_names app-${app_id}-second"
@@ -49,7 +57,7 @@ fi
 for alias_name in $alias_names; do
   app_dir="apps/$schema/$alias_name"
   mkdir -p "$app_dir/pages" "$app_dir/.apex"
-  printf 'prompt application %s\r\n' "$app_id" > "$app_dir/application.apx"
+  printf 'prompt application %s %s\r\n' "$app_id" "${FAKE_EXPORT_MARKER:-}" > "$app_dir/application.apx"
   printf 'prompt page one for %s\r\n' "$app_id" > "$app_dir/pages/p00001.apx"
   printf '{"format":"APEXLANG"}\n' > "$app_dir/.apex/apexlang.json"
 done
@@ -85,6 +93,10 @@ run_export() {
     FAKE_FAIL_APP_ID="${FAKE_FAIL_APP_ID:-}" \
     FAKE_EXPORT_NOTHING_APP_ID="${FAKE_EXPORT_NOTHING_APP_ID:-}" \
     FAKE_AMBIGUOUS_APP_ID="${FAKE_AMBIGUOUS_APP_ID:-}" \
+    FAKE_REPO_ROOT="$TEST_REPO" \
+    FAKE_DIRTY_MIRROR_APP_ID="${FAKE_DIRTY_MIRROR_APP_ID:-}" \
+    FAKE_DIRTY_MIRROR_TARGET="${FAKE_DIRTY_MIRROR_TARGET:-}" \
+    FAKE_EXPORT_MARKER="${FAKE_EXPORT_MARKER:-}" \
     "$TEST_REPO/scripts/export_apps.sh"
 }
 
@@ -142,5 +154,20 @@ if FAKE_AMBIGUOUS_APP_ID=100 run_export; then
 fi
 test -z "$(git -C "$TEST_REPO" status --porcelain -- apps)" \
   || fail "invalid staged exports changed existing mirrors"
+
+# Export is already all-or-nothing. Replacement must be too: if the second
+# application's mirror cannot be installed, the first must not be left changed.
+git -C "$TEST_REPO" checkout -- apps
+commit_all "seed the atomic replacement fixture"
+before_100="$(cat "$MIRROR_100/application.apx")"
+if FAKE_EXPORT_MARKER=atomic-replacement FAKE_DIRTY_MIRROR_APP_ID=100 \
+  FAKE_DIRTY_MIRROR_TARGET=101 run_export; then
+  fail "export succeeded despite an un-replaceable second mirror"
+fi
+test "$(cat "$MIRROR_100/application.apx")" = "$before_100" \
+  || fail "the first mirror was left replaced after the second could not be installed"
+rm -f "$MIRROR_101/uncommitted.apx"
+test -z "$(git -C "$TEST_REPO" status --porcelain -- apps)" \
+  || fail "a rolled-back replacement left the working tree dirty"
 
 echo "PASS: atomic multi-application APEX export orchestration"

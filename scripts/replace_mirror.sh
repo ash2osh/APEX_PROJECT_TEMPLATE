@@ -1,10 +1,20 @@
 #!/usr/bin/env bash
-# Replace one generated mirror with a completed staging directory.
+# Replace generated mirrors with completed staging directories atomically.
 set -euo pipefail
 
 REPO_ROOT="${MIRROR_SYNC_REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd -P)}"
-STAGED_DIR_ARG="${1:?usage: replace_mirror.sh <staged-dir> <destination>}"
-DEST_DIR_ARG="${2:?usage: replace_mirror.sh <staged-dir> <destination>}"
+if [ "$#" -lt 2 ] || [ $(( $# % 2 )) -ne 0 ]; then
+  echo "usage: replace_mirror.sh <staged-dir> <destination> [<staged-dir> <destination> ...]" >&2
+  exit 1
+fi
+
+STAGED_DIRS=()
+DEST_DIRS=()
+CANONICAL_RELS=()
+
+validate_pair() {
+STAGED_DIR_ARG="$1"
+DEST_DIR_ARG="$2"
 
 if [ ! -d "$STAGED_DIR_ARG" ]; then
   echo "staging directory does not exist: $STAGED_DIR_ARG" >&2
@@ -120,6 +130,11 @@ if [ -e "$BACKUP_DIR" ] || [ -L "$BACKUP_DIR" ]; then
   exit 1
 fi
 
+STAGED_DIRS+=("$STAGED_DIR")
+DEST_DIRS+=("$DEST_DIR")
+CANONICAL_RELS+=("$CANONICAL_REL")
+}
+
 # Lock protocol v1. Both implementations must agree, because on Windows a
 # Git Bash run and a PowerShell run can target the same mirror.
 #
@@ -200,26 +215,51 @@ acquire_mirror_lock() {
   return 1
 }
 
+while [ "$#" -gt 0 ]; do
+  validate_pair "$1" "$2"
+  shift 2
+done
+
 LOCK_ROOT="$SCRATCH_ROOT/.mirror-locks"
 mkdir -p "$LOCK_ROOT"
-if ! LOCK_KEY="$(lock_digest "$CANONICAL_REL")"; then
-  exit 1
-fi
-LOCK_FILE="$LOCK_ROOT/$LOCK_KEY.lock"
-acquire_mirror_lock "$LOCK_FILE" "$CANONICAL_REL" || exit 1
 
-ROLLBACK_PENDING=0
+ACQUIRED_LOCKS=()
+INSTALLED_INDEXES=()
+MOVED_DEST_INDEXES=()
+BACKUP_DIRS=()
+
+release_locks() {
+  local lock_file
+  for lock_file in "${ACQUIRED_LOCKS[@]:-}"; do
+    [ -n "$lock_file" ] && rm -f -- "$lock_file" 2>/dev/null || true
+  done
+}
+
+unwind_replacements() {
+  local index
+  # Reverse order: undo the staged move first, then restore the old mirror.
+  for (( index=${#STAGED_DIRS[@]} - 1; index >= 0; index-- )); do
+    case " ${INSTALLED_INDEXES[*]:-} " in
+      *" $index "*)
+        mv -- "${DEST_DIRS[$index]}" "${STAGED_DIRS[$index]}" 2>/dev/null || \
+          echo "rollback could not return ${DEST_DIRS[$index]} to staging" >&2
+        ;;
+    esac
+    case " ${MOVED_DEST_INDEXES[*]:-} " in
+      *" $index "*)
+        mv -- "${BACKUP_DIRS[$index]}" "${DEST_DIRS[$index]}" 2>/dev/null || \
+          echo "rollback failed; the previous mirror is at ${BACKUP_DIRS[$index]}" >&2
+        ;;
+    esac
+  done
+}
+
 cleanup_replacement() {
   cleanup_status=$?
-  if [ "$ROLLBACK_PENDING" -eq 1 ] && \
-     { [ -e "$BACKUP_DIR" ] || [ -L "$BACKUP_DIR" ]; } && \
-     ! { [ -e "$DEST_DIR" ] || [ -L "$DEST_DIR" ]; }; then
-    if ! mv -- "$BACKUP_DIR" "$DEST_DIR"; then
-      echo "replacement interrupted and rollback failed; old mirror is at $BACKUP_DIR" >&2
-      cleanup_status=1
-    fi
+  if [ "$cleanup_status" -ne 0 ]; then
+    unwind_replacements
   fi
-  rm -f -- "$LOCK_FILE" 2>/dev/null || true
+  release_locks
   trap - EXIT
   exit "$cleanup_status"
 }
@@ -227,30 +267,37 @@ trap cleanup_replacement EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM HUP
 
-# Close the check-to-replace window as much as possible after taking the lock.
-check_clean_mirror
+for (( PAIR_INDEX=0; PAIR_INDEX < ${#STAGED_DIRS[@]}; PAIR_INDEX++ )); do
+  LOCK_FILE="$LOCK_ROOT/$(lock_digest "${CANONICAL_RELS[$PAIR_INDEX]}").lock"
+  acquire_mirror_lock "$LOCK_FILE" "${CANONICAL_RELS[$PAIR_INDEX]}" || exit 1
+  ACQUIRED_LOCKS+=("$LOCK_FILE")
+  BACKUP_DIRS+=("$REPO_ROOT/scratch/.mirror-backup.$(basename -- "${DEST_DIRS[$PAIR_INDEX]}").$$.$PAIR_INDEX")
+done
 
-if [ -e "$DEST_DIR" ] || [ -L "$DEST_DIR" ]; then
-  mv -- "$DEST_DIR" "$BACKUP_DIR"
-  ROLLBACK_PENDING=1
-fi
+# Recheck every mirror after taking every lock, to close the check-to-replace
+# window as much as possible, then move them all.
+for (( PAIR_INDEX=0; PAIR_INDEX < ${#STAGED_DIRS[@]}; PAIR_INDEX++ )); do
+  DEST_REL="${CANONICAL_RELS[$PAIR_INDEX]}"
+  check_clean_mirror
+done
 
-if ! mv -- "$STAGED_DIR" "$DEST_DIR"; then
-  if [ -e "$BACKUP_DIR" ] || [ -L "$BACKUP_DIR" ]; then
-    if ! mv -- "$BACKUP_DIR" "$DEST_DIR"; then
-      echo "replacement failed and rollback failed; old mirror is at $BACKUP_DIR" >&2
+for (( PAIR_INDEX=0; PAIR_INDEX < ${#STAGED_DIRS[@]}; PAIR_INDEX++ )); do
+  if [ -e "${DEST_DIRS[$PAIR_INDEX]}" ] || [ -L "${DEST_DIRS[$PAIR_INDEX]}" ]; then
+    mv -- "${DEST_DIRS[$PAIR_INDEX]}" "${BACKUP_DIRS[$PAIR_INDEX]}"
+    MOVED_DEST_INDEXES+=("$PAIR_INDEX")
+  fi
+  mv -- "${STAGED_DIRS[$PAIR_INDEX]}" "${DEST_DIRS[$PAIR_INDEX]}"
+  INSTALLED_INDEXES+=("$PAIR_INDEX")
+done
+
+# Every mirror is installed. Discard the saved copies.
+for (( PAIR_INDEX=0; PAIR_INDEX < ${#BACKUP_DIRS[@]}; PAIR_INDEX++ )); do
+  if [ -e "${BACKUP_DIRS[$PAIR_INDEX]}" ] || [ -L "${BACKUP_DIRS[$PAIR_INDEX]}" ]; then
+    rm -rf -- "${BACKUP_DIRS[$PAIR_INDEX]}" || {
+      echo "mirrors installed, but cleanup failed; the previous mirror is at ${BACKUP_DIRS[$PAIR_INDEX]}" >&2
       exit 1
-    fi
-    ROLLBACK_PENDING=0
+    }
   fi
-  exit 1
-fi
-
-ROLLBACK_PENDING=0
-
-if [ -e "$BACKUP_DIR" ] || [ -L "$BACKUP_DIR" ]; then
-  if ! rm -rf -- "$BACKUP_DIR"; then
-    echo "mirror installed, but rollback cleanup failed; old mirror is at $BACKUP_DIR" >&2
-    exit 1
-  fi
-fi
+done
+INSTALLED_INDEXES=()
+MOVED_DEST_INDEXES=()

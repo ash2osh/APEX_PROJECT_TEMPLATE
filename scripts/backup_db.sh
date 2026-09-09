@@ -137,11 +137,12 @@ run_backup_scope tables "$TABLES_SCHEMA" "$TABLES_SQLCL_CONNECTION" \
 run_backup_scope code "$CODE_SCHEMA" "$CODE_SQLCL_CONNECTION" \
   "$CODE_EXPECTED_USER" "$CODE_PREFIXES"
 
+REPLACE_ARGS=()
 for schema in "${BACKUP_SCHEMAS[@]}"; do
   # A scope that produced no objects of one type leaves an empty directory that
   # would otherwise be installed, implying "none exist" where the truth is
   # "none were looked for". Prune after verification, before replacement.
   find "$STAGING_DIR/database/$schema" -mindepth 1 -type d -empty -delete
-  "$REPO_ROOT/scripts/replace_mirror.sh" \
-    "$STAGING_DIR/database/$schema" "database/$schema"
+  REPLACE_ARGS+=("$STAGING_DIR/database/$schema" "database/$schema")
 done
+"$REPO_ROOT/scripts/replace_mirror.sh" "${REPLACE_ARGS[@]}"

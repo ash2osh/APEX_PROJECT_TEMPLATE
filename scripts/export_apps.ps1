@@ -60,11 +60,14 @@ try {
     & (Join-Path $PSScriptRoot "normalize_apx.ps1") $appStage
   }
 
-  # Install only after every requested application has exported and verified.
+  # Install every application in one call so a failure on the last does not
+  # leave the earlier ones replaced.
+  $replaceArgs = @()
   foreach ($appId in $appIds) {
-    & (Join-Path $PSScriptRoot "replace_mirror.ps1") `
-      (Join-Path $stageParent $appId) "apps/$($env:APEX_PARSING_SCHEMA)/$appId"
+    $replaceArgs += (Join-Path $stageParent $appId)
+    $replaceArgs += "apps/$($env:APEX_PARSING_SCHEMA)/$appId"
   }
+  & (Join-Path $PSScriptRoot "replace_mirror.ps1") @replaceArgs
 } finally {
   if (Test-Path -LiteralPath $stagingPath) {
     Remove-Item -LiteralPath $stagingPath -Recurse -Force -ErrorAction Stop

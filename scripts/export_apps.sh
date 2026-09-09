@@ -79,8 +79,11 @@ for app_id in "${APP_IDS[@]}"; do
   "$REPO_ROOT/scripts/normalize_apx.sh" "$APP_STAGE"
 done
 
-# Install only after every requested application has exported and verified.
+# Install only after every requested application has exported and verified, and
+# install them in one call so a failure on the last application does not leave
+# the earlier ones replaced.
+REPLACE_ARGS=()
 for app_id in "${APP_IDS[@]}"; do
-  "$REPO_ROOT/scripts/replace_mirror.sh" \
-    "$STAGE_PARENT/$app_id" "apps/$APEX_PARSING_SCHEMA/$app_id"
+  REPLACE_ARGS+=("$STAGE_PARENT/$app_id" "apps/$APEX_PARSING_SCHEMA/$app_id")
 done
+"$REPO_ROOT/scripts/replace_mirror.sh" "${REPLACE_ARGS[@]}"

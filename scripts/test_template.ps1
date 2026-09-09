@@ -22,7 +22,7 @@ try {
   & git -C $testRepo -c user.name=TemplateTest -c user.email=test@example.invalid commit -qm initial
 
   & (Join-Path $testRepo "scripts/replace_mirror.ps1") `
-    -StagedDir (Join-Path $testRepo "scratch/staged") -Destination "database/mirror"
+    (Join-Path $testRepo "scratch/staged") "database/mirror"
   Assert-True (Test-Path -LiteralPath (Join-Path $testRepo "database/mirror/new.txt")) "new mirror content was not installed"
   Assert-True (-not (Test-Path -LiteralPath (Join-Path $testRepo "database/mirror/stale.txt"))) "stale mirror content was retained"
 
@@ -40,7 +40,7 @@ try {
   New-Item -ItemType Directory -Force -Path (Join-Path $testRepo "scratch/lock-staged") | Out-Null
   [System.IO.File]::WriteAllText((Join-Path $testRepo "scratch/lock-staged/file.txt"), "content`n")
   & (Join-Path $testRepo "scripts/replace_mirror.ps1") `
-    -StagedDir (Join-Path $testRepo "scratch/lock-staged") -Destination "database/mirror"
+    (Join-Path $testRepo "scratch/lock-staged") "database/mirror"
   Assert-True (-not (Test-Path -LiteralPath $lockPath)) "a stale mirror lock was not broken and released"
 
   & git -C $testRepo add -A database/mirror
@@ -54,7 +54,7 @@ try {
   $rejected = $false
   try {
     & (Join-Path $testRepo "scripts/replace_mirror.ps1") `
-      -StagedDir (Join-Path $testRepo "scratch/partial-lock-staged") -Destination "database/mirror"
+      (Join-Path $testRepo "scratch/partial-lock-staged") "database/mirror"
   } catch {
     $rejected = $true
   }
@@ -80,7 +80,7 @@ try {
     $rejected = $false
     try {
       & (Join-Path $testRepo "scripts/replace_mirror.ps1") `
-        -StagedDir (Join-Path $testRepo "scratch/incomplete-fields-staged") -Destination "database/mirror"
+        (Join-Path $testRepo "scratch/incomplete-fields-staged") "database/mirror"
     } catch {
       $rejected = $true
     }
@@ -97,7 +97,7 @@ try {
   $rejected = $false
   try {
     & (Join-Path $testRepo "scripts/replace_mirror.ps1") `
-      -StagedDir (Join-Path $testRepo "scratch/live-ps1-lock-staged") -Destination "database/mirror"
+      (Join-Path $testRepo "scratch/live-ps1-lock-staged") "database/mirror"
   } catch {
     $rejected = $true
   }
@@ -113,7 +113,7 @@ try {
   $rejected = $false
   try {
     & (Join-Path $testRepo "scripts/replace_mirror.ps1") `
-      -StagedDir (Join-Path $testRepo "scratch/live-sh-lock-staged") -Destination "database/mirror"
+      (Join-Path $testRepo "scratch/live-sh-lock-staged") "database/mirror"
   } catch {
     $rejected = $true
   }
@@ -137,7 +137,7 @@ try {
         if ($UFormat -eq "%s") { return "1000" }
         return Microsoft.PowerShell.Utility\Get-Date
       }
-      & $ReplaceScript -StagedDir $StagedDir -Destination $Destination
+      & $ReplaceScript $StagedDir $Destination
     } (Join-Path $testRepo "scripts/replace_mirror.ps1") `
       (Join-Path $testRepo "scratch/boundary-lock-staged") "database/mirror"
   } catch {
@@ -154,7 +154,7 @@ try {
   $rejected = $false
   try {
     & (Join-Path $testRepo "scripts/replace_mirror.ps1") `
-      -StagedDir (Join-Path $testRepo "scratch/dotdot") -Destination "apps/schema/.."
+      (Join-Path $testRepo "scratch/dotdot") "apps/schema/.."
   } catch {
     $rejected = $true
   }

@@ -123,6 +123,7 @@ try {
 
   Pop-Location
   $locationPushed = $false
+  $replaceArgs = @()
   foreach ($schema in $backupSchemas) {
     # A scope that produced no objects of one type leaves an empty directory
     # that would otherwise be installed. Prune after verification. Descending
@@ -135,9 +136,10 @@ try {
           Remove-Item -LiteralPath $_.FullName -Force
         }
       }
-    & (Join-Path $PSScriptRoot "replace_mirror.ps1") `
-      (Join-Path $stagingPath "database/$schema") "database/$schema"
+    $replaceArgs += (Join-Path $stagingPath "database/$schema")
+    $replaceArgs += "database/$schema"
   }
+  & (Join-Path $PSScriptRoot "replace_mirror.ps1") @replaceArgs
 } finally {
   if ($locationPushed) { Pop-Location }
   if (Test-Path -LiteralPath $stagingPath) {
