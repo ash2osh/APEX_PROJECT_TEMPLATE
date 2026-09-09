@@ -244,6 +244,26 @@ def _blank_out(pattern: str, text: str) -> str:
     )
 
 
+def _from_clause_starts(text: str):
+    """Yield positions immediately after unquoted FROM/JOIN clause keywords."""
+    index = 0
+    in_quoted_identifier = False
+    while index < len(text):
+        char = text[index]
+        if char == '"':
+            if in_quoted_identifier and index + 1 < len(text) and text[index + 1] == '"':
+                index += 2
+                continue
+            in_quoted_identifier = not in_quoted_identifier
+        elif not in_quoted_identifier:
+            match = FROM_START_RE.match(text, index)
+            if match:
+                yield match.end()
+                index = match.end()
+                continue
+        index += 1
+
+
 def _from_items(text: str):
     """Yield every top-level item of every FROM/JOIN clause in *text*.
 
@@ -251,8 +271,8 @@ def _from_items(text: str):
     or at a closing parenthesis that belongs to an enclosing clause, and a lazy
     match happily runs past that parenthesis into the next CTE.
     """
-    for start in FROM_START_RE.finditer(text):
-        index = item_start = start.end()
+    for start in _from_clause_starts(text):
+        index = item_start = start
         depth = 0
         while index < len(text):
             char = text[index]
