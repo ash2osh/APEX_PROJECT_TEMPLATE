@@ -654,6 +654,18 @@ if bash -c 'source "$1" "$2"' _ "$REPO_ROOT/scripts/load_env.sh" "$LEGACY_SLUG_E
 fi
 
 test -f "$REPO_ROOT/.agents/skills/install-uc-apx/SKILL.md" || fail "conditional uc-apx installer skill is missing"
+# Both skills must invoke the PowerShell loader the way the file requires.
+grep -q '\. scripts/load_env\.ps1\|\. \./scripts/load_env\.ps1' \
+  "$REPO_ROOT/.agents/skills/install-uc-apx/SKILL.md" \
+  || fail "install-uc-apx does not dot-source the PowerShell loader"
+
+# AGENTS.md section 6 is a fill-in table. Warn while the placeholders remain, so
+# a configured project cannot silently keep the template's example schemas.
+if grep -q '<PROJECT>_DATA' "$REPO_ROOT/AGENTS.md"; then
+  grep -q 'Replace this table' "$REPO_ROOT/AGENTS.md" \
+    || fail "AGENTS.md section 6 still holds placeholders without saying so"
+fi
+
 INIT_SKILL="$REPO_ROOT/.agents/skills/initialize-project/SKILL.md"
 CLAUDE_INIT_SKILL="$REPO_ROOT/.claude/skills/initialize-project/SKILL.md"
 CLAUDE_INIT_COMMAND="$REPO_ROOT/.claude/commands/init.md"

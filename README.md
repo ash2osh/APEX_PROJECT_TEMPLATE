@@ -96,6 +96,20 @@ durable architectural knowledge rather than bare Markdown headings. Afterwards:
   tracked extractor is reinstalled and verified rather than silently falling
   back to the SQL parser.
 
+`graphify-out/` is local state and is gitignored, so it can outlive the sources
+it describes — a clone that indexed a demo application keeps answering from it
+after those files are gone, and `.agents/rules/graphify.md` is `always_on`, so
+every agent is routed there first. Check it:
+
+```bash
+git rev-parse HEAD
+python3 -c "import json; print(json.load(open('graphify-out/graph.json'))['built_at_commit'])"
+```
+
+If the commits differ substantially, or if the indexed sources no longer exist,
+rebuild with `graphify extract . --force` or delete `graphify-out/` — every
+rule is gated on it existing, so removing it is safe.
+
 ### What this template adds to Graphify
 
 Graphify has no native understanding of Oracle APEX: left alone it parses

@@ -17,6 +17,13 @@ jobs:
       - name: Check shell syntax
         run: bash -n scripts/*.sh
 
+      # The scripts carry `# shellcheck source=` directives, so `bash -n` alone
+      # was leaving the tool they were written for unrun.
+      - name: Run shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y shellcheck
+          shellcheck --severity=warning scripts/*.sh
+
       - name: Run repository self-checks
         run: bash scripts/test_template.sh
 

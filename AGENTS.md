@@ -162,6 +162,11 @@ Windows, a PowerShell text cmdlet, a chat-pasted diff). For the full
 
 ## 6. Schema Ownership (fill in for this project)
 
+> **Replace this table before doing schema work.** The rows below are the
+> template's examples, not this project's schemas. `scripts/test_template.sh`
+> checks only that this notice is still here while the placeholders are — it
+> cannot tell you the table is wrong once you remove it.
+
 Adjust this table to match how this project actually splits schemas. Many
 Oracle APEX projects separate data, compiled code, REST/API metadata, and
 the APEX runtime schema so that grants stay narrow and objects are

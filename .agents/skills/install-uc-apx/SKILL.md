@@ -12,7 +12,8 @@ user-controlled tooling.
 
 1. From the repository root, require `.env` to exist.
 2. Read it with `. scripts/load_env.sh .env` on Bash or
-   `scripts/load_env.ps1 -EnvFile .env` on PowerShell. Never `source`, `eval`,
+   `. ./scripts/load_env.ps1 -EnvFile .env` on PowerShell — both are
+   dot-sourced, which is what those files require. Never `source`, `eval`,
    or execute `.env` directly.
 3. If `INSTALL_UC_APX` is not exactly `true`, stop successfully without
    installing or synchronizing anything.
