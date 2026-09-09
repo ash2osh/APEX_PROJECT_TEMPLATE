@@ -66,6 +66,22 @@ class ApexlangExtractorTests(unittest.TestCase):
         )
         self.assertEqual(reads, {"ORDERS", "CUSTOMERS", "ORDER_ITEMS"})
 
+    def test_does_not_treat_quoted_from_identifiers_as_clauses(self) -> None:
+        reads, _writes, _calls = self.module._sql_dependencies(
+            'select "FROM", "actual_column" from orders'
+        )
+        self.assertEqual(reads, {"ORDERS"})
+        reads, _writes, _calls = self.module._sql_dependencies('select "FROM", "other"')
+        self.assertEqual(reads, set())
+
+    def test_does_not_treat_quoted_join_identifiers_as_clauses(self) -> None:
+        reads, _writes, _calls = self.module._sql_dependencies(
+            'select "JOIN", "actual_column" from orders'
+        )
+        self.assertEqual(reads, {"ORDERS"})
+        reads, _writes, _calls = self.module._sql_dependencies('select "JOIN", "other"')
+        self.assertEqual(reads, set())
+
     def test_does_not_treat_a_cte_with_a_column_list_as_a_table(self) -> None:
         reads, _writes, _calls = self.module._sql_dependencies(
             "with t (a, b) as (select 1, 2 from dual) select a from t, orders"

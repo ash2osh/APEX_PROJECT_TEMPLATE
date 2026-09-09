@@ -52,7 +52,7 @@ APEX_URL_PAGE_RE = re.compile(r'f\?p=[^:\s]*:(\d+):', re.IGNORECASE)
 SQL_NAME_PART = r'(?:"[^"]+"|#[A-Za-z0-9_]+#|[A-Za-z][A-Za-z0-9_$#]*)'
 SQL_IDENTIFIER = rf'{SQL_NAME_PART}(?:\s*\.\s*{SQL_NAME_PART})*'
 SUBSTITUTION_PART_RE = re.compile(r'#[^#]*#')
-FROM_START_RE = re.compile(r'\b(?:FROM|JOIN)\b', re.IGNORECASE)
+FROM_START_RE = re.compile(r'\b(?:FROM|JOIN)\b\s+', re.IGNORECASE)
 # Keywords that end a FROM list. SELECT/WITH/AS are included because an
 # unbalanced closing parenthesis is not the only way a clause can end.
 FROM_STOP_RE = re.compile(
