@@ -142,10 +142,11 @@ def _patched_dispatch(text: str) -> str | None:
 
 
 def _smoke_test_extractor(extractor_path: Path) -> tuple[bool, str]:
-    scratch = REPO_ROOT / "scratch"
-    scratch.mkdir(exist_ok=True)
-    smoke_root = Path(tempfile.mkdtemp(prefix="graphify-apexlang-smoke.", dir=scratch))
+    smoke_root = Path(tempfile.mkdtemp(prefix="graphify-apexlang-smoke."))
     module_name = f"graphify_apexlang_smoke_{os.getpid()}_{id(extractor_path)}"
+    module_was_present = module_name in sys.modules
+    previous_module = sys.modules.get(module_name)
+    previous_dont_write_bytecode = sys.dont_write_bytecode
     try:
         fixture = smoke_root / "apps" / "DEMO" / "102" / "pages" / "p00004-home.apx"
         fixture.parent.mkdir(parents=True)
@@ -165,6 +166,7 @@ def _smoke_test_extractor(extractor_path: Path) -> tuple[bool, str]:
             return False, "could not create an import specification"
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
+        sys.dont_write_bytecode = True
         spec.loader.exec_module(module)
         result = module.extract_apexlang(fixture)
         if result.get("error"):
@@ -176,7 +178,11 @@ def _smoke_test_extractor(extractor_path: Path) -> tuple[bool, str]:
     except Exception as exc:
         return False, f"smoke extraction raised {type(exc).__name__}: {exc}"
     finally:
-        sys.modules.pop(module_name, None)
+        if module_was_present:
+            sys.modules[module_name] = previous_module
+        else:
+            sys.modules.pop(module_name, None)
+        sys.dont_write_bytecode = previous_dont_write_bytecode
         shutil.rmtree(smoke_root, ignore_errors=True)
 
 
@@ -339,7 +345,11 @@ def main(argv: list[str]) -> int:
             return 1
         failed = False
         for base in bases:
-            verified, reason = verify_installation(Path(base))
+            try:
+                verified, reason = verify_installation(Path(base))
+            except Exception as exc:
+                verified = False
+                reason = f"verification raised {type(exc).__name__}: {exc}"
             print(f"{'OK  ' if verified else 'FAIL'} {base}: {reason}")
             failed = failed or not verified
         return 1 if failed else 0

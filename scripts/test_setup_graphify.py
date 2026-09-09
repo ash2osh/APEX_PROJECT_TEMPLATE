@@ -52,6 +52,18 @@ class GraphifyPatchTests(unittest.TestCase):
     def write_package(self) -> None:
         self.write_package_at(self.root)
 
+    def snapshot_tree(self, root: Path) -> dict[str, tuple[str, bytes | str]]:
+        snapshot: dict[str, tuple[str, bytes | str]] = {}
+        for path in sorted(root.rglob("*")):
+            relative = str(path.relative_to(root))
+            if path.is_symlink():
+                snapshot[relative] = ("symlink", os.readlink(path))
+            elif path.is_dir():
+                snapshot[relative] = ("directory", b"")
+            else:
+                snapshot[relative] = ("file", path.read_bytes())
+        return snapshot
+
     def test_missing_required_module_fails(self) -> None:
         (self.root / "detect.py").write_text("EXTENSIONS = {'.sql',}\n", encoding="utf-8")
         self.assertFalse(MODULE.patch_graphify_dir(self.root))
@@ -100,6 +112,55 @@ class GraphifyPatchTests(unittest.TestCase):
             MODULE, "find_graphify_dirs", return_value=[str(self.root)]
         ):
             self.assertEqual(MODULE.main(["--verify"]), 0)
+
+    def test_verify_mode_does_not_mutate_package_or_scratch(self) -> None:
+        self.write_package()
+        self.assertTrue(MODULE.patch_graphify_dir(self.root))
+        scratch = REPO_ROOT / "scratch"
+        package_before = self.snapshot_tree(self.root)
+        scratch_before = self.snapshot_tree(scratch)
+        previous_dont_write_bytecode = sys.dont_write_bytecode
+
+        sys.dont_write_bytecode = False
+        try:
+            with mock.patch.object(
+                MODULE, "find_graphify_dirs", return_value=[str(self.root)]
+            ):
+                self.assertEqual(MODULE.main(["--verify"]), 0)
+            self.assertFalse(sys.dont_write_bytecode)
+        finally:
+            sys.dont_write_bytecode = previous_dont_write_bytecode
+
+        self.assertEqual(package_before, self.snapshot_tree(self.root))
+        self.assertEqual(scratch_before, self.snapshot_tree(scratch))
+
+    def test_verify_mode_checks_all_candidates_after_a_malformed_installation(
+        self,
+    ) -> None:
+        malformed = self.root / "malformed"
+        (malformed / "extractors").mkdir(parents=True)
+        shutil.copyfile(
+            REPO_ROOT / "scripts" / "graphify_apexlang_extractor.py",
+            malformed / "extractors" / "apexlang.py",
+        )
+
+        valid = self.root / "valid"
+        self.write_package_at(valid)
+        self.assertTrue(MODULE.patch_graphify_dir(valid))
+        output = io.StringIO()
+
+        with (
+            mock.patch.object(
+                MODULE,
+                "find_graphify_dirs",
+                return_value=[str(malformed), str(valid)],
+            ),
+            redirect_stdout(output),
+        ):
+            self.assertEqual(MODULE.main(["--verify"]), 1)
+
+        self.assertIn(f"FAIL {malformed}:", output.getvalue())
+        self.assertIn(f"OK   {valid}:", output.getvalue())
 
     def test_reports_tree_sitter_sql_install_failure(self) -> None:
         output = io.StringIO()
