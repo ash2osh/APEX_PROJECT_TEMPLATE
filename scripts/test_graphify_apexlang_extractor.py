@@ -92,6 +92,25 @@ class ApexlangExtractorTests(unittest.TestCase):
             ],
         )
 
+    def test_reports_newline_path_as_one_warning_line(self) -> None:
+        broken = Path("apps/DEMO/101/pages/first\nsecond.apx")
+        with mock.patch.object(
+            self.module, "parse_apexlang", side_effect=RuntimeError("boom")
+        ), mock.patch.object(Path, "read_text", return_value="app 1 (\n)\n"):
+            with contextlib.redirect_stderr(io.StringIO()) as captured:
+                result = self.module.extract_apexlang(broken)
+
+        self.assertEqual(result["nodes"], [])
+        self.assertEqual(result["edges"], [])
+        self.assertEqual(result["error"], "boom")
+        self.assertEqual(
+            captured.getvalue().splitlines(),
+            [
+                "Warning: APEXlang extraction failed for "
+                "apps/DEMO/101/pages/first second.apx: RuntimeError: boom"
+            ],
+        )
+
     def test_unqualified_calls_are_deliberately_not_detected(self) -> None:
         # The dot requirement in PAREN_CALL_RE is load-bearing: without it every
         # SQL built-in (NVL, TO_CHAR, SUBSTR) becomes a `calls` edge. Resolving

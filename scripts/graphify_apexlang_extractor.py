@@ -680,8 +680,9 @@ def extract_apexlang(path: Path) -> dict[str, object]:
         # splitlines covers CR/LF and the other line separators recognized by
         # Python, while keeping the original error text for callers below.
         display_error = " ".join(error.splitlines())
+        display_path = " ".join(str(path).splitlines())
         print(
-            f"Warning: APEXlang extraction failed for {path}: "
+            f"Warning: APEXlang extraction failed for {display_path}: "
             f"{type(exc).__name__}: {display_error}",
             file=sys.stderr,
         )
