@@ -84,6 +84,45 @@ class GraphifyPatchTests(unittest.TestCase):
         self.assertTrue(MODULE.patch_graphify_dir(self.root))
         self.assertEqual(first, {path: path.read_bytes() for path in paths})
 
+    def test_verify_mode_reports_an_unpatched_installation(self) -> None:
+        self.write_package()
+
+        with mock.patch.object(
+            MODULE, "find_graphify_dirs", return_value=[str(self.root)]
+        ):
+            self.assertEqual(MODULE.main(["--verify"]), 1)
+
+    def test_verify_mode_accepts_a_patched_installation(self) -> None:
+        self.write_package()
+        self.assertTrue(MODULE.patch_graphify_dir(self.root))
+
+        with mock.patch.object(
+            MODULE, "find_graphify_dirs", return_value=[str(self.root)]
+        ):
+            self.assertEqual(MODULE.main(["--verify"]), 0)
+
+    def test_reports_tree_sitter_sql_install_failure(self) -> None:
+        output = io.StringIO()
+
+        with (
+            mock.patch.object(
+                MODULE, "graphify_console_interpreter", return_value="/mock/python"
+            ),
+            mock.patch.object(MODULE, "find_graphify_dirs", return_value=[]),
+            mock.patch.object(
+                MODULE.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess([], 1, "", "failed"),
+            ),
+            redirect_stdout(output),
+        ):
+            self.assertFalse(MODULE.setup_graphify_apx())
+
+        self.assertIn(
+            "could not install tree-sitter-sql into Graphify's interpreter",
+            output.getvalue(),
+        )
+
     def test_repairs_outdated_installed_extractor(self) -> None:
         self.write_package()
         self.assertTrue(MODULE.patch_graphify_dir(self.root))

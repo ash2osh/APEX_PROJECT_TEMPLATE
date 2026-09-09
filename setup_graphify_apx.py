@@ -283,24 +283,30 @@ def patch_graphify_dir(base: Path) -> bool:
 def setup_graphify_apx() -> bool:
     print("Checking Graphify & tree-sitter-sql setup...")
 
-    # Attempt uv pip install first
-    graphify_bin = shutil.which("graphify")
-    if graphify_bin and os.path.exists(graphify_bin):
-        try:
-            with open(graphify_bin, "r") as f:
-                first_line = f.readline()
-        except (UnicodeDecodeError, OSError):
-            # Windows pip/uv console-script shims are compiled .exe launchers,
-            # not shebang scripts — nothing to sniff, just skip this step.
-            first_line = ""
-        if first_line.startswith("#!"):
-            py_path = first_line.strip()[2:]
-            if os.path.exists(py_path):
-                subprocess.run([py_path, "-m", "pip", "install", "tree-sitter-sql"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                try:
-                    subprocess.run(["uv", "pip", "install", "--python", py_path, "tree-sitter-sql"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                except Exception:
-                    pass
+    # Best-effort: the supported path is `uv tool install graphifyy --with
+    # tree-sitter-sql`. Report what happened rather than discarding it -- a
+    # silent failure here shows up much later as an unindexable database/ tree.
+    py_path = graphify_console_interpreter()
+    if py_path:
+        installed = False
+        for command in (
+            [py_path, "-m", "pip", "install", "tree-sitter-sql"],
+            ["uv", "pip", "install", "--python", py_path, "tree-sitter-sql"],
+        ):
+            try:
+                completed = subprocess.run(
+                    command, capture_output=True, text=True, timeout=300
+                )
+            except (OSError, subprocess.SubprocessError):
+                continue
+            if completed.returncode == 0:
+                installed = True
+                break
+        if not installed:
+            print("Note: could not install tree-sitter-sql into Graphify's interpreter.\n"
+                  "      Without it, database/ and supporting-objects/*.sql cannot be indexed.\n"
+                  "      Install it with Graphify instead:\n"
+                  "        uv tool install graphifyy --with tree-sitter-sql --force")
 
     g_dirs = find_graphify_dirs()
     if not g_dirs:
@@ -323,5 +329,22 @@ def setup_graphify_apx() -> bool:
         print(f"Invalidated {removed} stale APEXlang AST cache entr{'y' if removed == 1 else 'ies'}")
     return all(results.values())
 
+
+def main(argv: list[str]) -> int:
+    """Entry point. `--verify` checks the installation without changing it."""
+    if "--verify" in argv:
+        bases = find_graphify_dirs()
+        if not bases:
+            print("Graphify installation not found")
+            return 1
+        failed = False
+        for base in bases:
+            verified, reason = verify_installation(Path(base))
+            print(f"{'OK  ' if verified else 'FAIL'} {base}: {reason}")
+            failed = failed or not verified
+        return 1 if failed else 0
+    return 0 if setup_graphify_apx() else 1
+
+
 if __name__ == "__main__":
-    raise SystemExit(0 if setup_graphify_apx() else 1)
+    raise SystemExit(main(sys.argv[1:]))

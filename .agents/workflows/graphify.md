@@ -52,11 +52,20 @@ would omit `app_context`.
 
 ## Upgrade gate
 
-After every Graphify upgrade, rerun `python3 setup_graphify_apx.py` before any
-update. Graphify has no supported APEXlang extension point, so setup validates
-the current package anchors and fails closed if an upgrade is incompatible.
-Never repair the installed copy by hand; update the tracked extractor/setup and
-their tests so the fix persists for every template user.
+A Graphify upgrade replaces `site-packages` and silently removes the APEXlang
+patches; nothing detects the reverted state at query time. Before any
+`graphify update` or `graphify extract`, run the pre-flight — it changes
+nothing and exits non-zero when the integration is not installed:
+
+```bash
+python3 setup_graphify_apx.py --verify
+```
+
+If it fails, run `python3 setup_graphify_apx.py` to reinstall. Graphify has no
+supported APEXlang extension point, so setup validates the current package
+anchors and fails closed if an upgrade is incompatible. Never repair the
+installed copy by hand; update the tracked extractor/setup and their tests so
+the fix persists for every template user.
 
 ## Verification and queries
 

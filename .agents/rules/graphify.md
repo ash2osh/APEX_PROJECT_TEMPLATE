@@ -23,4 +23,4 @@ Rules:
 - After modifying APEXlang or database source, run `graphify update .` to refresh deterministic AST relationships without semantic API cost.
 - After modifying `app_context/*.md`, run `graphify extract .` so the semantic hash and context concepts refresh.
 - After changing `.graphifyignore` or deliberately deleting substantial source, run `graphify extract . --force`, then verify excluded paths are absent and all three retained domain roots remain queryable.
-- After any Graphify upgrade, rerun `python3 setup_graphify_apx.py` before updating. A changed integration contract must fail setup rather than silently falling back to SQL or file-only `.apx` nodes.
+- Before `graphify update` or `graphify extract`, run `python3 setup_graphify_apx.py --verify`. It changes nothing and exits non-zero if a Graphify upgrade has silently reverted the APEXlang integration; reinstall with `python3 setup_graphify_apx.py` when it does.
