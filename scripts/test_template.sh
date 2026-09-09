@@ -137,6 +137,68 @@ if MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
 fi
 rm -f "$LOCK_ROOT/$STALE_LOCK_KEY.lock"
 
+# A creator writes metadata after atomically creating the file. A contender
+# that observes the incomplete file must never delete it and take the lock.
+mkdir -p "$TEST_REPO/scratch/partial-staged"
+printf 'content\n' > "$TEST_REPO/scratch/partial-staged/file.txt"
+printf 'version=1\nimpl=ps1\n' > "$LOCK_ROOT/$STALE_LOCK_KEY.lock"
+if MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
+    "$TEST_REPO/scratch/partial-staged" "database/mirror"; then
+  fail "a partial mirror lock was stolen"
+fi
+test -e "$LOCK_ROOT/$STALE_LOCK_KEY.lock" || fail "a partial mirror lock was deleted"
+rm -f "$LOCK_ROOT/$STALE_LOCK_KEY.lock"
+
+# Cross-implementation PID namespaces are incomparable, so a fresh foreign
+# lock must remain contention even when its PID is not alive locally.
+mkdir -p "$TEST_REPO/scratch/cross-impl-staged"
+printf 'content\n' > "$TEST_REPO/scratch/cross-impl-staged/file.txt"
+printf 'version=1\nimpl=ps1\npid=999999\nepoch=%s\n' "$(date +%s)" \
+  > "$LOCK_ROOT/$STALE_LOCK_KEY.lock"
+if MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
+    "$TEST_REPO/scratch/cross-impl-staged" "database/mirror"; then
+  fail "a fresh cross-implementation mirror lock was ignored"
+fi
+test -e "$LOCK_ROOT/$STALE_LOCK_KEY.lock" || fail "a fresh cross-implementation mirror lock was deleted"
+rm -f "$LOCK_ROOT/$STALE_LOCK_KEY.lock"
+
+# Exactly the configured age is not older than the window. Override date in
+# only this child process to make the boundary deterministic.
+FIXED_DATE_BIN="$TEST_REPO/scratch/fixed-date-bin"
+mkdir -p "$FIXED_DATE_BIN" "$TEST_REPO/scratch/boundary-staged"
+printf '#!/bin/sh\nprintf "1000\\n"\n' > "$FIXED_DATE_BIN/date"
+chmod +x "$FIXED_DATE_BIN/date"
+printf 'content\n' > "$TEST_REPO/scratch/boundary-staged/file.txt"
+printf 'version=1\nimpl=ps1\npid=999999\nepoch=990\n' > "$LOCK_ROOT/$STALE_LOCK_KEY.lock"
+if MIRROR_LOCK_STALE_SECONDS=10 PATH="$FIXED_DATE_BIN:$PATH" \
+    MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
+    "$TEST_REPO/scratch/boundary-staged" "database/mirror"; then
+  fail "a boundary-age mirror lock was treated as stale"
+fi
+test -e "$LOCK_ROOT/$STALE_LOCK_KEY.lock" || fail "a boundary-age mirror lock was deleted"
+rm -f "$LOCK_ROOT/$STALE_LOCK_KEY.lock"
+
+# A non-SHA fallback would make Bash target a different path from PowerShell.
+# Run a real replacement with only the commands it needs, deliberately omitting
+# sha256sum and shasum while retaining cksum to expose the former bad fallback.
+NO_SHA_BIN="$TEST_REPO/scratch/no-sha-bin"
+mkdir -p "$NO_SHA_BIN" "$TEST_REPO/scratch/no-sha-staged"
+for TOOL in dirname mkdir find git stat basename sed head tr date rm mv cksum awk; do
+  TOOL_PATH="$(command -v "$TOOL")"
+  if [ -z "$TOOL_PATH" ] || ! ln -s "$TOOL_PATH" "$NO_SHA_BIN/$TOOL" 2>/dev/null; then
+    fail "could not build the no-SHA-256 PATH fixture for $TOOL"
+  fi
+done
+printf 'content\n' > "$TEST_REPO/scratch/no-sha-staged/file.txt"
+if NO_SHA_OUTPUT="$(PATH="$NO_SHA_BIN" MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$BASH" \
+    "$REPO_ROOT/scripts/replace_mirror.sh" "$TEST_REPO/scratch/no-sha-staged" "database/mirror" 2>&1)"; then
+  fail "mirror replacement accepted a non-SHA-256 lock path"
+fi
+case "$NO_SHA_OUTPUT" in
+  *"SHA-256 is required to acquire a mirror lock"*) ;;
+  *) fail "mirror replacement did not explain the missing SHA-256 tool" ;;
+esac
+
 printf 'one\r\ntwo\r\n' > "$TEST_REPO/scratch/sample.apx"
 printf 'lone\rreturn' > "$TEST_REPO/scratch/lone-cr.apx"
 "$REPO_ROOT/scripts/normalize_apx.sh" "$TEST_REPO/scratch"

@@ -43,6 +43,85 @@ try {
     -StagedDir (Join-Path $testRepo "scratch/lock-staged") -Destination "database/mirror"
   Assert-True (-not (Test-Path -LiteralPath $lockPath)) "a stale mirror lock was not broken and released"
 
+  & git -C $testRepo add -A database/mirror
+  & git -C $testRepo -c user.name=TemplateTest -c user.email=test@example.invalid commit -qm "post-stale lock fixture"
+
+  # A contender can observe a just-created lock before its creator writes the
+  # metadata. It must refuse the incomplete file rather than delete and steal it.
+  New-Item -ItemType Directory -Force -Path (Join-Path $testRepo "scratch/partial-lock-staged") | Out-Null
+  [System.IO.File]::WriteAllText((Join-Path $testRepo "scratch/partial-lock-staged/file.txt"), "content`n")
+  [System.IO.File]::WriteAllText($lockPath, "version=1`nimpl=sh`n")
+  $rejected = $false
+  try {
+    & (Join-Path $testRepo "scripts/replace_mirror.ps1") `
+      -StagedDir (Join-Path $testRepo "scratch/partial-lock-staged") -Destination "database/mirror"
+  } catch {
+    $rejected = $true
+  }
+  Assert-True $rejected "a partial mirror lock was stolen"
+  Assert-True (Test-Path -LiteralPath $lockPath) "a partial mirror lock was deleted"
+  Remove-Item -LiteralPath $lockPath -Force
+
+  # Live same-implementation locks remain exact PID contention.
+  New-Item -ItemType Directory -Force -Path (Join-Path $testRepo "scratch/live-ps1-lock-staged") | Out-Null
+  [System.IO.File]::WriteAllText((Join-Path $testRepo "scratch/live-ps1-lock-staged/file.txt"), "content`n")
+  $epoch = [int][double]::Parse((Get-Date -UFormat %s))
+  [System.IO.File]::WriteAllText($lockPath, "version=1`nimpl=ps1`npid=$PID`nepoch=$epoch`n")
+  $rejected = $false
+  try {
+    & (Join-Path $testRepo "scripts/replace_mirror.ps1") `
+      -StagedDir (Join-Path $testRepo "scratch/live-ps1-lock-staged") -Destination "database/mirror"
+  } catch {
+    $rejected = $true
+  }
+  Assert-True $rejected "a live PowerShell mirror lock was ignored"
+  Assert-True (Test-Path -LiteralPath $lockPath) "a live PowerShell mirror lock was deleted"
+  Remove-Item -LiteralPath $lockPath -Force
+
+  # A fresh Bash lock has an incomparable PID namespace and must still block.
+  New-Item -ItemType Directory -Force -Path (Join-Path $testRepo "scratch/live-sh-lock-staged") | Out-Null
+  [System.IO.File]::WriteAllText((Join-Path $testRepo "scratch/live-sh-lock-staged/file.txt"), "content`n")
+  $epoch = [int][double]::Parse((Get-Date -UFormat %s))
+  [System.IO.File]::WriteAllText($lockPath, "version=1`nimpl=sh`npid=999999`nepoch=$epoch`n")
+  $rejected = $false
+  try {
+    & (Join-Path $testRepo "scripts/replace_mirror.ps1") `
+      -StagedDir (Join-Path $testRepo "scratch/live-sh-lock-staged") -Destination "database/mirror"
+  } catch {
+    $rejected = $true
+  }
+  Assert-True $rejected "a fresh Bash mirror lock was ignored"
+  Assert-True (Test-Path -LiteralPath $lockPath) "a fresh Bash mirror lock was deleted"
+  Remove-Item -LiteralPath $lockPath -Force
+
+  # Exactly the configured age is not older than the window. The command
+  # resolution override applies only while the replacement script runs.
+  New-Item -ItemType Directory -Force -Path (Join-Path $testRepo "scratch/boundary-lock-staged") | Out-Null
+  [System.IO.File]::WriteAllText((Join-Path $testRepo "scratch/boundary-lock-staged/file.txt"), "content`n")
+  [System.IO.File]::WriteAllText($lockPath, "version=1`nimpl=sh`npid=999999`nepoch=990`n")
+  $previousStaleSeconds = $env:MIRROR_LOCK_STALE_SECONDS
+  $env:MIRROR_LOCK_STALE_SECONDS = "10"
+  $rejected = $false
+  try {
+    & {
+      param([string]$ReplaceScript, [string]$StagedDir, [string]$Destination)
+      function Get-Date {
+        param([string]$UFormat)
+        if ($UFormat -eq "%s") { return "1000" }
+        return Microsoft.PowerShell.Utility\Get-Date
+      }
+      & $ReplaceScript -StagedDir $StagedDir -Destination $Destination
+    } (Join-Path $testRepo "scripts/replace_mirror.ps1") `
+      (Join-Path $testRepo "scratch/boundary-lock-staged") "database/mirror"
+  } catch {
+    $rejected = $true
+  } finally {
+    $env:MIRROR_LOCK_STALE_SECONDS = $previousStaleSeconds
+  }
+  Assert-True $rejected "a boundary-age mirror lock was treated as stale"
+  Assert-True (Test-Path -LiteralPath $lockPath) "a boundary-age mirror lock was deleted"
+  Remove-Item -LiteralPath $lockPath -Force
+
   New-Item -ItemType Directory -Force -Path (Join-Path $testRepo "scratch/dotdot") | Out-Null
   [System.IO.File]::WriteAllText((Join-Path $testRepo "scratch/dotdot/file.txt"), "content`n")
   $rejected = $false

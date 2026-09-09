@@ -141,14 +141,16 @@ function Enter-MirrorLock([string]$LockPath, [string]$CanonicalRelative) {
       $holderImpl = Get-MirrorLockField -Path $LockPath -Key "impl"
       $holderPid = Get-MirrorLockField -Path $LockPath -Key "pid"
       $holderEpoch = Get-MirrorLockField -Path $LockPath -Key "epoch"
+      [long]$holderEpochValue = 0
+      if (-not [Int64]::TryParse($holderEpoch, [ref]$holderEpochValue) -or $holderEpochValue -lt 0) {
+        throw ("another mirror replacement is already running for $CanonicalRelative; " +
+          "lock metadata is incomplete or unreadable; refusing to remove $LockPath")
+      }
       if ($holderImpl -eq "ps1" -and $holderPid -and (Get-Process -Id ([int]$holderPid) -ErrorAction SilentlyContinue)) {
         throw "another mirror replacement is already running for $CanonicalRelative (pid $holderPid)"
       }
-      $age = $mirrorLockStaleSeconds
-      if ($holderEpoch) {
-        $age = [int][double]::Parse((Get-Date -UFormat %s)) - [int]$holderEpoch
-      }
-      if (-not $holderEpoch -or $age -ge $mirrorLockStaleSeconds) {
+      $age = [long][double]::Parse((Get-Date -UFormat %s)) - $holderEpochValue
+      if ($age -gt $mirrorLockStaleSeconds) {
         Write-Warning "breaking stale mirror lock for $CanonicalRelative (impl=$holderImpl pid=$holderPid age=${age}s)"
         Remove-Item -LiteralPath $LockPath -Force -ErrorAction SilentlyContinue
         continue

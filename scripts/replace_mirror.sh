@@ -149,7 +149,8 @@ lock_digest() {
   elif command -v shasum >/dev/null 2>&1; then
     printf '%s' "$1" | shasum -a 256 | cut -c1-16
   else
-    printf '%s' "$1" | cksum | awk '{printf "%016x", $1}'
+    echo "SHA-256 is required to acquire a mirror lock (install sha256sum or shasum)" >&2
+    return 1
   fi
 }
 
@@ -172,13 +173,18 @@ acquire_mirror_lock() {
     holder_impl="$(lock_field "$lock_file" impl)"
     holder_pid="$(lock_field "$lock_file" pid)"
     holder_epoch="$(lock_field "$lock_file" epoch)"
+    if [[ ! "$holder_epoch" =~ ^[0-9]+$ ]]; then
+      echo "another mirror replacement is already running for $canonical" >&2
+      echo "lock metadata is incomplete or unreadable; refusing to remove $lock_file" >&2
+      return 1
+    fi
     now="$(date +%s)"
     if [ "$holder_impl" = sh ] && [ -n "$holder_pid" ] && kill -0 "$holder_pid" 2>/dev/null; then
       echo "another mirror replacement is already running for $canonical (pid $holder_pid)" >&2
       return 1
     fi
-    age=$(( now - ${holder_epoch:-0} ))
-    if [ -z "$holder_epoch" ] || [ "$age" -ge "$MIRROR_LOCK_STALE_SECONDS" ]; then
+    age=$(( now - 10#$holder_epoch ))
+    if [ "$age" -gt "$MIRROR_LOCK_STALE_SECONDS" ]; then
       echo "breaking stale mirror lock for $canonical (impl=${holder_impl:-unknown} pid=${holder_pid:-unknown} age=${age}s)" >&2
       rm -f -- "$lock_file"
       continue
@@ -192,7 +198,10 @@ acquire_mirror_lock() {
 
 LOCK_ROOT="$SCRATCH_ROOT/.mirror-locks"
 mkdir -p "$LOCK_ROOT"
-LOCK_FILE="$LOCK_ROOT/$(lock_digest "$CANONICAL_REL").lock"
+if ! LOCK_KEY="$(lock_digest "$CANONICAL_REL")"; then
+  exit 1
+fi
+LOCK_FILE="$LOCK_ROOT/$LOCK_KEY.lock"
 acquire_mirror_lock "$LOCK_FILE" "$CANONICAL_REL" || exit 1
 
 ROLLBACK_PENDING=0
