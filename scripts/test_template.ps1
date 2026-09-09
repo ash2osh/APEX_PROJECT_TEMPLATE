@@ -72,6 +72,19 @@ UC_APX_SKILLS_AGENT=universal
   }
   Assert-True ($env:PROJECT_NAME -eq '$(throw should-not-run)') ".env literal value was changed or executed"
 
+  $relativeEnvName = ".env.relative-test"
+  Copy-Item -LiteralPath $baseEnvFile -Destination (Join-Path $repoRoot $relativeEnvName)
+  try {
+    Push-Location $testRoot
+    . (Join-Path $PSScriptRoot "load_env.ps1") -EnvFile $relativeEnvName
+    Pop-Location
+  } catch {
+    Pop-Location
+    Assert-True $false "PowerShell loader could not resolve a relative PROJECT_ENV_FILE from another directory: $($_.Exception.Message)"
+  } finally {
+    Remove-Item -LiteralPath (Join-Path $repoRoot $relativeEnvName) -Force -ErrorAction SilentlyContinue
+  }
+
   Assert-True ($env:APEX_APP_ID -eq "100,200") "PowerShell loader changed the application id list"
   Assert-True ($env:TABLES_PREFIXES -eq "SAMPLE_,COMMON_") "PowerShell loader changed the table prefix list"
 

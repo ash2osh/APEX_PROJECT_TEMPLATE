@@ -1,7 +1,21 @@
 #!/usr/bin/env bash
 # Source this file to load a strict KEY=VALUE .env file without executing it.
 
-PROJECT_ENV_FILE="${1:-${PROJECT_ENV_FILE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/.env}}"
+project_env_repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+PROJECT_ENV_FILE="${1:-${PROJECT_ENV_FILE:-$project_env_repo_root/.env}}"
+
+# README.md documents a relative PROJECT_ENV_FILE. Resolve it against the
+# repository root when it is not found relative to the caller's directory, so a
+# wrapper run from a subdirectory finds the same file as one run from the root.
+# The drive-letter arm keeps Git Bash from treating C:/... as relative.
+case "$PROJECT_ENV_FILE" in
+  /*|[A-Za-z]:[/\\]*) ;;
+  *)
+    if [ ! -f "$PROJECT_ENV_FILE" ] && [ -f "$project_env_repo_root/$PROJECT_ENV_FILE" ]; then
+      PROJECT_ENV_FILE="$project_env_repo_root/$PROJECT_ENV_FILE"
+    fi
+    ;;
+esac
 
 project_env_fail() {
   echo "project environment error: $*" >&2
@@ -175,3 +189,4 @@ done
 unset project_env_line project_env_key project_env_value project_env_required
 unset project_env_seen_keys project_env_seen_key project_env_seen_present
 unset project_env_prefix_items project_env_prefix_item project_env_quoted
+unset project_env_repo_root

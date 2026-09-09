@@ -13,6 +13,15 @@ param([string]$EnvFile = $env:PROJECT_ENV_FILE)
 $ErrorActionPreference = "Stop"
 $projectEnvRepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if ([string]::IsNullOrWhiteSpace($EnvFile)) { $EnvFile = Join-Path $projectEnvRepoRoot ".env" }
+# Mirror load_env.sh: a relative PROJECT_ENV_FILE resolves against the
+# repository root when it is not found relative to the caller's location.
+if (-not [System.IO.Path]::IsPathRooted($EnvFile) -and
+    -not (Test-Path -LiteralPath $EnvFile -PathType Leaf)) {
+  $projectEnvRootRelative = Join-Path $projectEnvRepoRoot $EnvFile
+  if (Test-Path -LiteralPath $projectEnvRootRelative -PathType Leaf) {
+    $EnvFile = $projectEnvRootRelative
+  }
+}
 if (-not (Test-Path -LiteralPath $EnvFile -PathType Leaf)) {
   throw "project environment error: configuration file not found: $EnvFile (copy .env.example to .env)"
 }
@@ -109,6 +118,7 @@ foreach ($projectEnvKey in @("TABLES_SQLCL_CONNECTION", "CODE_SQLCL_CONNECTION",
 # Mirror load_env.sh, which unsets its own temporaries after a successful load.
 Remove-Variable -Name projectEnvRepoRoot, projectEnvSeen, projectEnvAllowed,
   projectEnvRequired, projectEnvLine, projectEnvKey, projectEnvValue,
-  projectEnvPrefixValue, projectEnvPrefixItem, projectEnvQuoted `
+  projectEnvPrefixValue, projectEnvPrefixItem, projectEnvQuoted,
+  projectEnvRootRelative `
   -ErrorAction SilentlyContinue
 Remove-Item -Path Function:Assert-ProjectEnvUniqueCsv -ErrorAction SilentlyContinue

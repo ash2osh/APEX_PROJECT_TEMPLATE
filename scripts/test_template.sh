@@ -202,6 +202,17 @@ ENV_OUTPUT="$(bash -c 'source "$1" "$2"; printf "%s|%s|%s|%s|%s|%s" "$PROJECT_NA
 test "$ENV_OUTPUT" = "\$(touch $INJECTION_MARKER)|100,200|SAMPLE_,COMMON_|SAMPLE_,COMMON_|SAMPLE_DATA|SAMPLE_APEX" || fail "environment loader changed literal or CSV values"
 test ! -e "$INJECTION_MARKER" || fail "environment loader executed .env content"
 
+# README.md documents `PROJECT_ENV_FILE=.env.other scripts/export_apps.sh`.
+# A relative path must not depend on the caller's working directory.
+RELATIVE_ENV_NAME=".env.relative-test"
+cp "$ENV_FILE" "$REPO_ROOT/$RELATIVE_ENV_NAME"
+relative_env_status=0
+( cd "$TEST_ROOT" && bash -c 'source "$1" "$2"' \
+    _ "$REPO_ROOT/scripts/load_env.sh" "$RELATIVE_ENV_NAME" ) || relative_env_status=$?
+rm -f "$REPO_ROOT/$RELATIVE_ENV_NAME"
+test "$relative_env_status" -eq 0 \
+  || fail "environment loader could not resolve a relative PROJECT_ENV_FILE from another directory"
+
 MISSING_PREFIX_ENV_FILE="$TEST_ROOT/missing-prefix.env"
 grep -v '^CODE_PREFIXES=' "$ENV_FILE" > "$MISSING_PREFIX_ENV_FILE"
 if CODE_PREFIXES=INHERITED_ bash -c 'source "$1" "$2"' \
