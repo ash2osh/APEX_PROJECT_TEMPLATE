@@ -153,6 +153,9 @@ print(json.dumps({path: _is_ignored(root / path, root, patterns) for path in pat
         self.assertNotIn("Graphify is required for this project", readme)
         self.assertIn("optional", agents.lower())
         self.assertIn("if `graphify-out/`", rules)
+        self.assertIn('`AGENTS.md` "Optional Tooling"', rules)
+        self.assertIn("uv tool install graphifyy --with tree-sitter-sql", rules)
+        self.assertIn("python3 setup_graphify_apx.py --verify", rules)
 
 
 if __name__ == "__main__":
