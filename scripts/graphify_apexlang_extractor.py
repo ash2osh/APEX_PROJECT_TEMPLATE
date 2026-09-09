@@ -587,6 +587,21 @@ def parse_apexlang(text: str, path: Path) -> dict[str, object]:
             if property_name in COMPONENT_REFERENCE_PROPERTIES and not is_template_reference:
                 target_kind = COMPONENT_REFERENCE_PROPERTIES[property_name]
                 target = make_id(app_node_id, target_kind, reference)
+                # A component declared in another file arrives with the same id
+                # and replaces this placeholder; one that is never declared at
+                # least leaves a visible dangling reference instead of an edge
+                # pointing at nothing.
+                add_node(
+                    _node(
+                        target,
+                        _label(target_kind, reference),
+                        source_path,
+                        line_number,
+                        component_type=target_kind,
+                        application_id=app_id,
+                        synthetic_reference=True,
+                    )
+                )
                 add_edge(owner, target, "references_component", line_number)
 
         application_match = APPLICATION_PROPERTY_RE.match(line)

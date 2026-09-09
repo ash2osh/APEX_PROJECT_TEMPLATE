@@ -353,6 +353,26 @@ list navigation-menu (
             edges,
         )
 
+    def test_component_reference_creates_a_placeholder_node(self) -> None:
+        source = (
+            "app 101 (\n"
+            "    page 5 (\n"
+            "        region picker (\n"
+            "            listOfValues: @DEPARTMENTS\n"
+            "        )\n"
+            "    )\n"
+            ")\n"
+        )
+        result = self.module.parse_apexlang(
+            source, Path("apps/DEMO/101/pages/p00005.apx")
+        )
+        node_ids = {node["id"] for node in result["nodes"]}
+        reference_edges = [
+            edge for edge in result["edges"] if edge["relation"] == "references_component"
+        ]
+        self.assertEqual(len(reference_edges), 1)
+        self.assertIn(reference_edges[0]["target"], node_ids)
+
     def test_navigation_to_another_application_targets_that_application(self) -> None:
         source = (
             "app 101 (\n"
