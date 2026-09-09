@@ -155,3 +155,20 @@ Add lessons below only when the evidence supports them.
   for SQL and every unrelated language.
 - Verification: `scripts/test_setup_graphify.py` proves setup removes matching
   `.apx` entries, retains non-APEX entries, and remains idempotent.
+
+### Exclude the Oracle recycle bin from every metadata query, not just the driver
+
+- Trigger: running `scripts/backup_db.*` against a schema where a table was
+  dropped without `PURGE`, with `PREFIXES=*`.
+- Evidence: recycle-bin objects keep the name `BIN$<base64>==$0`. The base64
+  padding guarantees an `=`, which fails the
+  `^[A-Za-z0-9_$#]+$` filename check, so the name guard raised ORA-20020 and
+  aborted the whole backup before the driver was generated -- naming no object,
+  so the operator had nothing to search for.
+- Preferred behavior: exclude `BIN$%` in the guard, all seven driver queries, and
+  the manifest. `ALL_TABLES.DROPPED` is authoritative but `ALL_OBJECTS` has
+  no such column, so the guard and manifest must use the name predicate. Fixing
+  only the driver converts the abort into a manifest count mismatch.
+- Verification: `scripts/test_template.sh` asserts nine `NOT LIKE 'BIN$%'`
+  predicates, the `dropped = 'NO'` column filter, and that the guard names the
+  objects it refuses.

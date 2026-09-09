@@ -49,36 +49,44 @@ END;
 -- Object names become filenames and SQL string literals in the generated
 -- driver. Reject unexpected names before writing or executing that driver.
 DECLARE
-  v_count PLS_INTEGER;
+  v_unsafe VARCHAR2(4000);
 BEGIN
-  SELECT COUNT(*)
-  INTO v_count
-  FROM all_objects
-  WHERE owner = UPPER('&&target_schema')
-    AND (
-      (LOWER('&&object_scope') = 'tables' AND object_type = 'TABLE')
-      OR
-      (LOWER('&&object_scope') = 'code' AND object_type IN (
-        'VIEW', 'PACKAGE', 'PACKAGE BODY', 'PROCEDURE', 'FUNCTION', 'TRIGGER'
-      ))
-    )
-    AND (
-      '&&object_prefixes' = '*'
-      OR EXISTS (
-        SELECT 1
-        FROM (
-          SELECT REGEXP_SUBSTR('&&object_prefixes', '[^,]+', 1, LEVEL) object_prefix
-          FROM dual
-          CONNECT BY LEVEL <= REGEXP_COUNT('&&object_prefixes', ',') + 1
-        ) configured_prefixes
-        WHERE INSTR(all_objects.object_name, configured_prefixes.object_prefix) = 1
+  SELECT LISTAGG(object_name, ', ') WITHIN GROUP (ORDER BY object_name)
+  INTO v_unsafe
+  FROM (
+    SELECT object_name
+    FROM all_objects
+    WHERE owner = UPPER('&&target_schema')
+      AND (
+        (LOWER('&&object_scope') = 'tables' AND object_type = 'TABLE')
+        OR
+        (LOWER('&&object_scope') = 'code' AND object_type IN (
+          'VIEW', 'PACKAGE', 'PACKAGE BODY', 'PROCEDURE', 'FUNCTION', 'TRIGGER'
+        ))
       )
-    )
-    AND NOT REGEXP_LIKE(object_name, '^[A-Za-z0-9_$#]+$');
+      -- A table dropped without PURGE, and any trigger it dragged with it,
+      -- stays here as BIN$<base64>==$0. Those are not project objects.
+      AND object_name NOT LIKE 'BIN$%'
+      AND (
+        '&&object_prefixes' = '*'
+        OR EXISTS (
+          SELECT 1
+          FROM (
+            SELECT REGEXP_SUBSTR('&&object_prefixes', '[^,]+', 1, LEVEL) object_prefix
+            FROM dual
+            CONNECT BY LEVEL <= REGEXP_COUNT('&&object_prefixes', ',') + 1
+          ) configured_prefixes
+          WHERE INSTR(all_objects.object_name, configured_prefixes.object_prefix) = 1
+        )
+      )
+      AND NOT REGEXP_LIKE(object_name, '^[A-Za-z0-9_$#]+$')
+      AND ROWNUM <= 10
+  );
 
-  IF v_count > 0 THEN
+  IF v_unsafe IS NOT NULL THEN
     RAISE_APPLICATION_ERROR(-20020,
-      'Schema contains object names that are unsafe for metadata export filenames');
+      'Schema contains object names that are unsafe for metadata export filenames: '
+      || SUBSTR(v_unsafe, 1, 1800));
   END IF;
 END;
 /
@@ -104,6 +112,8 @@ SELECT 'SPOOL database/&&target_schema/tables/' || REPLACE(table_name, '$', '-S-
 FROM all_tables tables_to_export
 WHERE LOWER('&&object_scope') = 'tables'
   AND tables_to_export.owner = UPPER('&&target_schema')
+  AND tables_to_export.dropped = 'NO'
+  AND tables_to_export.table_name NOT LIKE 'BIN$%'
   AND (
     '&&object_prefixes' = '*'
     OR EXISTS (
@@ -125,6 +135,7 @@ SELECT 'SPOOL database/&&target_schema/views/' || REPLACE(view_name, '$', '-S-')
 FROM all_views views_to_export
 WHERE LOWER('&&object_scope') = 'code'
   AND views_to_export.owner = UPPER('&&target_schema')
+  AND views_to_export.view_name NOT LIKE 'BIN$%'
   AND (
     '&&object_prefixes' = '*'
     OR EXISTS (
@@ -147,6 +158,7 @@ FROM all_objects objects_to_export
 WHERE LOWER('&&object_scope') = 'code'
   AND objects_to_export.owner = UPPER('&&target_schema')
   AND objects_to_export.object_type = 'PACKAGE'
+  AND objects_to_export.object_name NOT LIKE 'BIN$%'
   AND (
     '&&object_prefixes' = '*'
     OR EXISTS (
@@ -169,6 +181,7 @@ FROM all_objects objects_to_export
 WHERE LOWER('&&object_scope') = 'code'
   AND objects_to_export.owner = UPPER('&&target_schema')
   AND objects_to_export.object_type = 'PACKAGE BODY'
+  AND objects_to_export.object_name NOT LIKE 'BIN$%'
   AND (
     '&&object_prefixes' = '*'
     OR EXISTS (
@@ -191,6 +204,7 @@ FROM all_objects objects_to_export
 WHERE LOWER('&&object_scope') = 'code'
   AND objects_to_export.owner = UPPER('&&target_schema')
   AND objects_to_export.object_type = 'PROCEDURE'
+  AND objects_to_export.object_name NOT LIKE 'BIN$%'
   AND (
     '&&object_prefixes' = '*'
     OR EXISTS (
@@ -213,6 +227,7 @@ FROM all_objects objects_to_export
 WHERE LOWER('&&object_scope') = 'code'
   AND objects_to_export.owner = UPPER('&&target_schema')
   AND objects_to_export.object_type = 'FUNCTION'
+  AND objects_to_export.object_name NOT LIKE 'BIN$%'
   AND (
     '&&object_prefixes' = '*'
     OR EXISTS (
@@ -235,6 +250,7 @@ FROM all_objects objects_to_export
 WHERE LOWER('&&object_scope') = 'code'
   AND objects_to_export.owner = UPPER('&&target_schema')
   AND objects_to_export.object_type = 'TRIGGER'
+  AND objects_to_export.object_name NOT LIKE 'BIN$%'
   AND (
     '&&object_prefixes' = '*'
     OR EXISTS (
@@ -275,6 +291,7 @@ FROM expected_types
 LEFT JOIN all_objects
  ON all_objects.owner = UPPER('&&target_schema')
  AND all_objects.object_type = expected_types.object_type
+ AND all_objects.object_name NOT LIKE 'BIN$%'
  AND (
    '&&object_prefixes' = '*'
    OR EXISTS (

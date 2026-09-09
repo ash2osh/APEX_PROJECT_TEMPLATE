@@ -461,6 +461,16 @@ test "$(grep -c "FROM DUAL' || CHR(59)$" "$REPO_ROOT/scripts/backup_db.sql")" = 
 test "$(grep -c "REPLACE(\(table_name\|view_name\|object_name\), '\$', '-S-')" \
   "$REPO_ROOT/scripts/backup_db.sql")" = 7 \
   || fail "backup_db.sql does not encode '\$' in all seven generated filenames"
+# A table dropped without PURGE stays in ALL_OBJECTS and ALL_TABLES as
+# BIN$<base64>==$0. The '=' fails the filename character check, so the name
+# guard aborted every backup with a message that named no object. ALL_OBJECTS
+# has no DROPPED column, so the guard and manifest need the name predicate.
+test "$(grep -c "NOT LIKE 'BIN\$%'" "$REPO_ROOT/scripts/backup_db.sql")" = 9 \
+  || fail "backup_db.sql does not exclude recycle-bin objects from all seven drivers, the guard, and the manifest"
+grep -q "tables_to_export.dropped = 'NO'" "$REPO_ROOT/scripts/backup_db.sql" \
+  || fail "backup_db.sql does not use the authoritative ALL_TABLES.DROPPED column"
+grep -q 'LISTAGG(object_name' "$REPO_ROOT/scripts/backup_db.sql" \
+  || fail "backup_db.sql does not name the unsafe objects it refuses to export"
 grep -q 'verify_scope_complete' "$REPO_ROOT/scripts/backup_db.sh" \
   || fail "backup_db.sh no longer verifies scope completeness against the manifest"
 grep -q 'Test-ScopeComplete' "$REPO_ROOT/scripts/backup_db.ps1" \
