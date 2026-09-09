@@ -12,7 +12,7 @@ param([string]$EnvFile = $env:PROJECT_ENV_FILE)
 
 $ErrorActionPreference = "Stop"
 try {
-$projectEnvRepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$projectEnvRepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 if ([string]::IsNullOrWhiteSpace($EnvFile)) { $EnvFile = Join-Path $projectEnvRepoRoot ".env" }
 # Mirror load_env.sh: a relative PROJECT_ENV_FILE resolves against the
 # repository root when it is not found relative to the caller's location.

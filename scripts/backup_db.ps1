@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 # Refresh table and code DBMS_METADATA mirrors through independent read targets.
 $ErrorActionPreference = "Stop"
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 . (Join-Path $PSScriptRoot "load_env.ps1") -EnvFile $env:PROJECT_ENV_FILE
 . (Join-Path $PSScriptRoot "invoke_sqlcl.ps1")
 & (Join-Path $PSScriptRoot "check_db_target.ps1") -Operation read -Target tables

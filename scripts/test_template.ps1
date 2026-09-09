@@ -228,6 +228,37 @@ UC_APX_SKILLS_AGENT=universal
 
 '@
   [System.IO.File]::WriteAllText($baseEnvFile, $envText)
+
+  # A copied loader under a directory containing [ or ] must resolve its own
+  # repository root literally when locating a relative environment file.
+  $bracketRoot = Join-Path $testRoot "clone[1]"
+  $bracketScripts = Join-Path $bracketRoot "scripts"
+  [System.IO.Directory]::CreateDirectory($bracketScripts) | Out-Null
+  Copy-Item -LiteralPath (Join-Path $PSScriptRoot "load_env.ps1") `
+    -Destination (Join-Path $bracketScripts "load_env.ps1")
+  [System.IO.File]::WriteAllText((Join-Path $bracketRoot ".env.bracket"), $envText)
+  $bracketLoaderRejected = $false
+  $bracketLocationPushed = $false
+  try {
+    Push-Location -LiteralPath $testRoot
+    $bracketLocationPushed = $true
+    . (Join-Path $bracketScripts "load_env.ps1") -EnvFile ".env.bracket"
+  } catch {
+    $bracketLoaderRejected = $true
+  } finally {
+    if ($bracketLocationPushed) { Pop-Location }
+  }
+  Assert-True (-not $bracketLoaderRejected) `
+    "PowerShell loader failed from a scripts directory under a bracketed root"
+  Assert-True ($env:PROJECT_NAME -eq '$(throw should-not-run)') `
+    "bracketed-root PowerShell loader did not load the expected environment"
+
+  foreach ($wrapper in @("backup_db.ps1", "export_apps.ps1")) {
+    $wrapperText = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot $wrapper))
+    Assert-True ($wrapperText -match 'Resolve-Path\s+-LiteralPath\s+\(Join-Path\s+\$PSScriptRoot\s+"\.\."\)') `
+      "$wrapper does not resolve its script root with -LiteralPath"
+  }
+
   function Get-Item {
     param([string]$LiteralPath)
     if ($LiteralPath.StartsWith("Env:")) {
