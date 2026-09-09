@@ -142,6 +142,11 @@ git -C "$TEST_REPO" -c user.name=TemplateTest -c user.email=test@example.invalid
 
 run_case split-schema DATA CODE
 
+# A split-schema project must not install directories the scope never writes,
+# and must not install an empty directory for a type that produced no objects.
+EMPTY_DIR="$(find "$TEST_REPO/database" -mindepth 2 -type d -empty -print -quit)"
+test -z "$EMPTY_DIR" || fail "backup installed an empty scope directory: $EMPTY_DIR"
+
 # A scope that writes fewer object files than its manifest counts is refused,
 # and the previous mirror survives untouched.
 git -C "$TEST_REPO" add database

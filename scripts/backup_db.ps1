@@ -11,6 +11,12 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 # not stop SQLcl, so an object can go missing without any non-zero exit code.
 # The manifest states how many objects each scope should have produced; refuse
 # to install a mirror that does not have exactly that many files.
+function Get-ScopeDirectory {
+  param([Parameter(Mandatory = $true)][ValidateSet("tables", "code")][string] $Scope)
+  if ($Scope -eq "tables") { return @("tables") }
+  return @("views", "packages", "procedures", "functions", "triggers")
+}
+
 function Test-ScopeComplete {
   param(
     [string] $Scope,
@@ -38,11 +44,7 @@ function Test-ScopeComplete {
       "object counts; the mirror was not replaced")
   }
 
-  if ($Scope -eq 'tables') {
-    $scopeDirs = @('tables')
-  } else {
-    $scopeDirs = @('views', 'packages', 'procedures', 'functions', 'triggers')
-  }
+  $scopeDirs = Get-ScopeDirectory -Scope $Scope
   $actual = 0
   foreach ($scopeDir in $scopeDirs) {
     $scopePath = Join-Path $StagingPath "database/$Schema/$scopeDir"
@@ -89,14 +91,6 @@ $scratchPath = Join-Path $repoRoot "scratch"
 New-Item -ItemType Directory -Force -Path $scratchPath | Out-Null
 $stagingPath = Join-Path $scratchPath ("db-backup-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path (Join-Path $stagingPath "scripts") | Out-Null
-foreach ($schema in $backupSchemas) {
-  $dbStage = Join-Path $stagingPath "database/$schema"
-  New-Item -ItemType Directory -Force -Path @(
-    (Join-Path $dbStage "tables"), (Join-Path $dbStage "views"),
-    (Join-Path $dbStage "packages"), (Join-Path $dbStage "procedures"),
-    (Join-Path $dbStage "functions"), (Join-Path $dbStage "triggers")
-  ) | Out-Null
-}
 
 try {
   $locationPushed = $false
@@ -105,6 +99,10 @@ try {
 
   # Both exports and manifests must complete before any generated mirror changes.
   foreach ($target in $backupTargets) {
+    foreach ($scopeDir in (Get-ScopeDirectory -Scope $target.Scope)) {
+      New-Item -ItemType Directory -Force `
+        -Path (Join-Path $stagingPath "database/$($target.Schema)/$scopeDir") | Out-Null
+    }
     $sqlclExit = Invoke-Sqlcl -WorkingDirectory $stagingPath `
       -StdInFile (Join-Path $stagingPath ".sqlcl-stdin") `
       -Arguments @(
@@ -126,12 +124,26 @@ try {
   Pop-Location
   $locationPushed = $false
   foreach ($schema in $backupSchemas) {
+    # A scope that produced no objects of one type leaves an empty directory
+    # that would otherwise be installed. Prune after verification. Descending
+    # order empties the deepest directories first, so a parent left empty by
+    # its own pruned children is removed in the same pass.
+    Get-ChildItem -LiteralPath (Join-Path $stagingPath "database/$schema") -Recurse -Directory |
+      Sort-Object -Property FullName -Descending |
+      ForEach-Object {
+        if (-not (Get-ChildItem -LiteralPath $_.FullName -Force)) {
+          Remove-Item -LiteralPath $_.FullName -Force
+        }
+      }
     & (Join-Path $PSScriptRoot "replace_mirror.ps1") `
       (Join-Path $stagingPath "database/$schema") "database/$schema"
   }
 } finally {
   if ($locationPushed) { Pop-Location }
   if (Test-Path -LiteralPath $stagingPath) {
-    Remove-Item -LiteralPath $stagingPath -Recurse -Force -ErrorAction Stop
+    # This runs after the mirrors are already installed. A file handle Windows
+    # has not released yet must not convert a completed backup into a failure,
+    # which is why Bash uses `rm -rf` in a trap and ignores the result.
+    Remove-Item -LiteralPath $stagingPath -Recurse -Force -ErrorAction SilentlyContinue
   }
 }

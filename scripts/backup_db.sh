@@ -49,11 +49,16 @@ mkdir -p "$STAGING_DIR/scripts"
 SQLCL_STDIN="$STAGING_DIR/.sqlcl-stdin"
 : > "$SQLCL_STDIN"
 
-for schema in "${BACKUP_SCHEMAS[@]}"; do
-  db_stage="$STAGING_DIR/database/$schema"
-  mkdir -p "$db_stage/tables" "$db_stage/views" "$db_stage/packages" \
-    "$db_stage/procedures" "$db_stage/functions" "$db_stage/triggers"
-done
+# SQLcl's SPOOL does not create missing directories, so each scope's own
+# directories are created just before its run -- and only its own, so a
+# split-schema project does not install directories nothing ever writes to.
+scope_directories() {
+  case "$1" in
+    tables) printf '%s\n' tables ;;
+    code)   printf '%s\n' views packages procedures functions triggers ;;
+    *) echo "unsupported backup scope: $1" >&2; return 1 ;;
+  esac
+}
 
 # A failed SPOOL inside the generated driver prints an SP2- message that does
 # not stop SQLcl, so an object can go missing without any non-zero exit code.
@@ -87,18 +92,13 @@ verify_scope_complete() {
     exit 1
   fi
 
-  local scope_dirs
-  case "$scope" in
-    tables) scope_dirs="tables" ;;
-    code)   scope_dirs="views packages procedures functions triggers" ;;
-  esac
   local actual=0
   local scope_dir found
-  for scope_dir in $scope_dirs; do
+  while IFS= read -r scope_dir; do
     found="$(find "$STAGING_DIR/database/$schema/$scope_dir" -maxdepth 1 -type f \
       -name '*.sql' 2>/dev/null | wc -l)"
     actual=$((actual + found))
-  done
+  done < <(scope_directories "$scope")
 
   if [ "$expected" -ne "$actual" ]; then
     echo "database backup is incomplete for $schema ($scope): manifest expects" >&2
@@ -113,6 +113,10 @@ run_backup_scope() {
   local connection="$3"
   local expected_user="$4"
   local prefixes="$5"
+  local scope_dir
+  while IFS= read -r scope_dir; do
+    mkdir -p "$STAGING_DIR/database/$schema/$scope_dir"
+  done < <(scope_directories "$scope")
   (
     cd "$STAGING_DIR"
     sql -S -noupdates -name "$connection" \
@@ -134,6 +138,10 @@ run_backup_scope code "$CODE_SCHEMA" "$CODE_SQLCL_CONNECTION" \
   "$CODE_EXPECTED_USER" "$CODE_PREFIXES"
 
 for schema in "${BACKUP_SCHEMAS[@]}"; do
+  # A scope that produced no objects of one type leaves an empty directory that
+  # would otherwise be installed, implying "none exist" where the truth is
+  # "none were looked for". Prune after verification, before replacement.
+  find "$STAGING_DIR/database/$schema" -mindepth 1 -type d -empty -delete
   "$REPO_ROOT/scripts/replace_mirror.sh" \
     "$STAGING_DIR/database/$schema" "database/$schema"
 done
