@@ -91,10 +91,11 @@ def find_graphify_dirs():
     if localappdata:
         dirs.extend(glob.glob(os.path.join(localappdata, "uv", "tools", "graphify*", "Lib", "site-packages", "graphify")))
 
+    dirs = sorted(set(dirs))
     if len(dirs) > 1:
         print("Warning: could not resolve the active Graphify from PATH; "
               f"patching {len(dirs)} candidate installation(s)")
-    return sorted(set(dirs))
+    return dirs
 
 
 def _patched_detector(text: str) -> tuple[str | None, str]:

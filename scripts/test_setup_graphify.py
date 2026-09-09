@@ -3,10 +3,14 @@
 
 from __future__ import annotations
 
+import builtins
+from contextlib import redirect_stdout
 import importlib.util
+import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -184,7 +188,74 @@ class GraphifyPatchTests(unittest.TestCase):
         )
 
     def test_prefers_the_interpreter_behind_the_graphify_console_script(self) -> None:
-        self.assertTrue(hasattr(MODULE, "graphify_console_interpreter"))
+        console_script = self.root / "bin" / "graphify"
+        console_script.parent.mkdir()
+        console_script.write_text(f"#!{sys.executable}\n", encoding="utf-8")
+        active_package = self.root / "active" / "site-packages" / "graphify"
+        active_package.mkdir(parents=True)
+        located = subprocess.CompletedProcess(
+            args=[sys.executable, "-c", ""],
+            returncode=0,
+            stdout=f"{active_package}\n",
+            stderr="",
+        )
+        with (
+            mock.patch.object(MODULE.shutil, "which", return_value=str(console_script)),
+            mock.patch.object(MODULE.subprocess, "run", return_value=located) as run,
+            mock.patch.object(
+                MODULE.glob,
+                "glob",
+                side_effect=AssertionError("resolved PATH installation must skip fallback scanning"),
+            ),
+        ):
+            self.assertEqual(MODULE.find_graphify_dirs(), [str(active_package)])
+
+        run.assert_called_once_with(
+            [
+                sys.executable,
+                "-c",
+                "import graphify, os; print(os.path.dirname(graphify.__file__))",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    def test_fallback_candidates_are_unique_sorted_and_warning_counts_unique_paths(self) -> None:
+        console_script = self.root / "bin" / "graphify"
+        console_script.parent.mkdir()
+        console_script.write_text("not a shebang\n", encoding="utf-8")
+        first = self.root / "z-fallback"
+        second = self.root / "a-fallback"
+        original_import = builtins.__import__
+
+        def import_without_graphify(name, *args, **kwargs):
+            if name == "graphify":
+                raise ImportError("graphify unavailable in test interpreter")
+            return original_import(name, *args, **kwargs)
+
+        output = io.StringIO()
+        with (
+            mock.patch.object(MODULE.shutil, "which", return_value=str(console_script)),
+            mock.patch.object(
+                builtins, "__import__", side_effect=import_without_graphify
+            ),
+            mock.patch.object(
+                MODULE.glob,
+                "glob",
+                return_value=[str(first), str(second), str(first)],
+            ),
+            redirect_stdout(output),
+        ):
+            self.assertEqual(
+                MODULE.find_graphify_dirs(), sorted({str(first), str(second)})
+            )
+
+        self.assertIn(
+            "Warning: could not resolve the active Graphify from PATH; "
+            "patching 2 candidate installation(s)",
+            output.getvalue(),
+        )
 
 
 if __name__ == "__main__":
