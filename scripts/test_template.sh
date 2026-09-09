@@ -213,6 +213,12 @@ rm -f "$REPO_ROOT/$RELATIVE_ENV_NAME"
 test "$relative_env_status" -eq 0 \
   || fail "environment loader could not resolve a relative PROJECT_ENV_FILE from another directory"
 
+MISSING_ENV_FILE="$TEST_ROOT/missing-environment-file.env"
+missing_env_output="$(bash -c 'source "$1" >/dev/null 2>&1; status=$?; printf "%s|%s" "$status" "${project_env_repo_root-UNSET}"' \
+  _ "$REPO_ROOT/scripts/load_env.sh" "$MISSING_ENV_FILE")"
+test "$missing_env_output" = "1|UNSET" \
+  || fail "Bash loader leaked project_env_repo_root after missing-file failure: $missing_env_output"
+
 MISSING_PREFIX_ENV_FILE="$TEST_ROOT/missing-prefix.env"
 grep -v '^CODE_PREFIXES=' "$ENV_FILE" > "$MISSING_PREFIX_ENV_FILE"
 if CODE_PREFIXES=INHERITED_ bash -c 'source "$1" "$2"' \

@@ -85,6 +85,19 @@ UC_APX_SKILLS_AGENT=universal
     Remove-Item -LiteralPath (Join-Path $repoRoot $relativeEnvName) -Force -ErrorAction SilentlyContinue
   }
 
+  $missingEnvFile = Join-Path $testRoot "missing-environment-file.env"
+  $rejected = $false
+  try {
+    . (Join-Path $PSScriptRoot "load_env.ps1") -EnvFile $missingEnvFile
+  } catch {
+    $rejected = $true
+  }
+  $leakedRepoRoot = Get-Variable -Name projectEnvRepoRoot -ErrorAction SilentlyContinue
+  $leakedRootRelative = Get-Variable -Name projectEnvRootRelative -ErrorAction SilentlyContinue
+  Assert-True $rejected "PowerShell loader did not reject a missing environment file"
+  Assert-True ($null -eq $leakedRepoRoot -and $null -eq $leakedRootRelative) `
+    "PowerShell loader leaked helper state after missing-file failure"
+
   Assert-True ($env:APEX_APP_ID -eq "100,200") "PowerShell loader changed the application id list"
   Assert-True ($env:TABLES_PREFIXES -eq "SAMPLE_,COMMON_") "PowerShell loader changed the table prefix list"
 

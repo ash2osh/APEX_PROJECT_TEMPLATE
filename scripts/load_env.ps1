@@ -11,6 +11,7 @@
 param([string]$EnvFile = $env:PROJECT_ENV_FILE)
 
 $ErrorActionPreference = "Stop"
+try {
 $projectEnvRepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if ([string]::IsNullOrWhiteSpace($EnvFile)) { $EnvFile = Join-Path $projectEnvRepoRoot ".env" }
 # Mirror load_env.sh: a relative PROJECT_ENV_FILE resolves against the
@@ -122,3 +123,7 @@ Remove-Variable -Name projectEnvRepoRoot, projectEnvSeen, projectEnvAllowed,
   projectEnvRootRelative `
   -ErrorAction SilentlyContinue
 Remove-Item -Path Function:Assert-ProjectEnvUniqueCsv -ErrorAction SilentlyContinue
+}
+finally {
+  Remove-Variable -Name projectEnvRepoRoot, projectEnvRootRelative -ErrorAction SilentlyContinue
+}

@@ -18,6 +18,7 @@ case "$PROJECT_ENV_FILE" in
 esac
 
 project_env_fail() {
+  unset project_env_repo_root
   echo "project environment error: $*" >&2
   return 1
 }
