@@ -676,9 +676,13 @@ def extract_apexlang(path: Path) -> dict[str, object]:
         text = path.read_text(encoding="utf-8")
         return parse_apexlang(text, path)
     except Exception as exc:  # noqa: BLE001 - see the docstring
+        error = str(exc)
+        # splitlines covers CR/LF and the other line separators recognized by
+        # Python, while keeping the original error text for callers below.
+        display_error = " ".join(error.splitlines())
         print(
             f"Warning: APEXlang extraction failed for {path}: "
-            f"{type(exc).__name__}: {exc}",
+            f"{type(exc).__name__}: {display_error}",
             file=sys.stderr,
         )
-        return {"nodes": [], "edges": [], "error": str(exc)}
+        return {"nodes": [], "edges": [], "error": error}
