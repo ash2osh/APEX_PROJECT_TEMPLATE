@@ -149,6 +149,26 @@ fi
 test -e "$LOCK_ROOT/$STALE_LOCK_KEY.lock" || fail "a partial mirror lock was deleted"
 rm -f "$LOCK_ROOT/$STALE_LOCK_KEY.lock"
 
+# Only a complete protocol-v1 record can authorize stale-lock removal. These
+# records have a valid old epoch but each omits or corrupts another field.
+mkdir -p "$TEST_REPO/scratch/incomplete-fields-staged"
+printf 'content\n' > "$TEST_REPO/scratch/incomplete-fields-staged/file.txt"
+for INCOMPLETE_LOCK in \
+  $'impl=ps1\npid=999999\nepoch=1\n' \
+  $'version=1\npid=999999\nepoch=1\n' \
+  $'version=1\nimpl=ps1\nepoch=1\n' \
+  $'version=2\nimpl=ps1\npid=999999\nepoch=1\n' \
+  $'version=1\nimpl=other\npid=999999\nepoch=1\n' \
+  $'version=1\nimpl=ps1\npid=not-a-pid\nepoch=1\n'; do
+  printf '%s' "$INCOMPLETE_LOCK" > "$LOCK_ROOT/$STALE_LOCK_KEY.lock"
+  if MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
+      "$TEST_REPO/scratch/incomplete-fields-staged" "database/mirror"; then
+    fail "an incomplete protocol-v1 mirror lock was stolen"
+  fi
+  test -e "$LOCK_ROOT/$STALE_LOCK_KEY.lock" || fail "an incomplete protocol-v1 mirror lock was deleted"
+done
+rm -f "$LOCK_ROOT/$STALE_LOCK_KEY.lock"
+
 # Cross-implementation PID namespaces are incomparable, so a fresh foreign
 # lock must remain contention even when its PID is not alive locally.
 mkdir -p "$TEST_REPO/scratch/cross-impl-staged"
@@ -221,6 +241,46 @@ done
 if [ -n "$PWSH" ]; then
   mkdir -p "$TEST_REPO/ps-scripts" "$TEST_REPO/database/mirror-ps" "$TEST_REPO/scratch/staged-ps"
   cp "$REPO_ROOT/scripts/replace_mirror.ps1" "$TEST_REPO/ps-scripts/replace_mirror.ps1"
+
+  # Hold a real Bash replacement after it has acquired the shared lock. The
+  # wrapper lets its first Git status pass, then blocks the post-lock recheck.
+  CROSS_GIT_BIN="$TEST_REPO/scratch/cross-git-bin"
+  CROSS_GIT_COUNT="$TEST_REPO/scratch/cross-git-count"
+  CROSS_GIT_READY="$TEST_REPO/scratch/cross-git-ready"
+  CROSS_GIT_RELEASE="$TEST_REPO/scratch/cross-git-release"
+  CROSS_HOLDER_LOG="$TEST_REPO/scratch/cross-bash-holder.log"
+  mkdir -p "$CROSS_GIT_BIN" "$TEST_REPO/scratch/cross-bash-held" "$TEST_REPO/scratch/cross-ps-contender"
+  printf '#!/usr/bin/env bash\nset -euo pipefail\ncount=0\nif [ -f "$MIRROR_LOCK_TEST_GIT_COUNT" ]; then count=$(<"$MIRROR_LOCK_TEST_GIT_COUNT"); fi\ncount=$((count + 1))\nprintf "%%s\\n" "$count" > "$MIRROR_LOCK_TEST_GIT_COUNT"\nif [ "$count" -eq 2 ]; then\n  : > "$MIRROR_LOCK_TEST_GIT_READY"\n  for _ in $(seq 1 100); do\n    [ -e "$MIRROR_LOCK_TEST_GIT_RELEASE" ] && break\n    sleep 0.05\n  done\nfi\nexec "$MIRROR_LOCK_TEST_REAL_GIT" "$@"\n' \
+    > "$CROSS_GIT_BIN/git"
+  chmod +x "$CROSS_GIT_BIN/git"
+  printf 'holder\n' > "$TEST_REPO/scratch/cross-bash-held/file.txt"
+  printf 'contender\n' > "$TEST_REPO/scratch/cross-ps-contender/file.txt"
+  MIRROR_LOCK_TEST_GIT_COUNT="$CROSS_GIT_COUNT" \
+    MIRROR_LOCK_TEST_GIT_READY="$CROSS_GIT_READY" \
+    MIRROR_LOCK_TEST_GIT_RELEASE="$CROSS_GIT_RELEASE" \
+    MIRROR_LOCK_TEST_REAL_GIT="$(command -v git)" \
+    PATH="$CROSS_GIT_BIN:$PATH" MIRROR_SYNC_REPO_ROOT="$TEST_REPO" \
+    "$REPO_ROOT/scripts/replace_mirror.sh" "$TEST_REPO/scratch/cross-bash-held" "database/mirror" \
+    > "$CROSS_HOLDER_LOG" 2>&1 &
+  CROSS_HOLDER_PID=$!
+  for _ in $(seq 1 100); do
+    [ -e "$CROSS_GIT_READY" ] && break
+    sleep 0.05
+  done
+  if [ ! -e "$CROSS_GIT_READY" ]; then
+    : > "$CROSS_GIT_RELEASE"
+    wait "$CROSS_HOLDER_PID" || true
+    fail "Bash mirror holder did not acquire and retain the shared lock"
+  fi
+  test -f "$LOCK_ROOT/$STALE_LOCK_KEY.lock" || fail "Bash holder did not create the shared lock file"
+  if "$PWSH" -NoProfile -File "$TEST_REPO/ps-scripts/replace_mirror.ps1" \
+      -StagedDir "$TEST_REPO/scratch/cross-ps-contender" -Destination "database/mirror"; then
+    : > "$CROSS_GIT_RELEASE"
+    wait "$CROSS_HOLDER_PID" || true
+    fail "PowerShell stole a live Bash mirror lock"
+  fi
+  : > "$CROSS_GIT_RELEASE"
+  wait "$CROSS_HOLDER_PID" || fail "Bash mirror holder did not finish after release"
 
   printf 'stale\n' > "$TEST_REPO/database/mirror-ps/stale.txt"
   git -C "$TEST_REPO" add database/mirror-ps/stale.txt

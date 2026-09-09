@@ -62,6 +62,33 @@ try {
   Assert-True (Test-Path -LiteralPath $lockPath) "a partial mirror lock was deleted"
   Remove-Item -LiteralPath $lockPath -Force
 
+  # A valid old epoch alone is insufficient: every protocol-v1 field must be
+  # present and valid before stale-lock deletion is allowed.
+  New-Item -ItemType Directory -Force -Path (Join-Path $testRepo "scratch/incomplete-fields-staged") | Out-Null
+  [System.IO.File]::WriteAllText((Join-Path $testRepo "scratch/incomplete-fields-staged/file.txt"), "content`n")
+  $incompleteLockPayloads = @(
+    "impl=sh`npid=999999`nepoch=1`n",
+    "version=1`npid=999999`nepoch=1`n",
+    "version=1`nimpl=sh`nepoch=1`n",
+    "version=2`nimpl=sh`npid=999999`nepoch=1`n",
+    "version=1`nimpl=other`npid=999999`nepoch=1`n",
+    "version=1`nimpl=PS1`npid=999999`nepoch=1`n",
+    "version=1`nimpl=sh`npid=not-a-pid`nepoch=1`n"
+  )
+  foreach ($incompleteLockPayload in $incompleteLockPayloads) {
+    [System.IO.File]::WriteAllText($lockPath, $incompleteLockPayload)
+    $rejected = $false
+    try {
+      & (Join-Path $testRepo "scripts/replace_mirror.ps1") `
+        -StagedDir (Join-Path $testRepo "scratch/incomplete-fields-staged") -Destination "database/mirror"
+    } catch {
+      $rejected = $true
+    }
+    Assert-True $rejected "an incomplete protocol-v1 mirror lock was stolen"
+    Assert-True (Test-Path -LiteralPath $lockPath) "an incomplete protocol-v1 mirror lock was deleted"
+  }
+  Remove-Item -LiteralPath $lockPath -Force
+
   # Live same-implementation locks remain exact PID contention.
   New-Item -ItemType Directory -Force -Path (Join-Path $testRepo "scratch/live-ps1-lock-staged") | Out-Null
   [System.IO.File]::WriteAllText((Join-Path $testRepo "scratch/live-ps1-lock-staged/file.txt"), "content`n")

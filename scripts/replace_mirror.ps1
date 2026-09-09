@@ -138,15 +138,23 @@ function Enter-MirrorLock([string]$LockPath, [string]$CanonicalRelative) {
       return $stream
     } catch [System.IO.IOException] {
       if ($attempt -eq 2) { break }
+      $holderVersion = Get-MirrorLockField -Path $LockPath -Key "version"
       $holderImpl = Get-MirrorLockField -Path $LockPath -Key "impl"
       $holderPid = Get-MirrorLockField -Path $LockPath -Key "pid"
       $holderEpoch = Get-MirrorLockField -Path $LockPath -Key "epoch"
+      [long]$holderPidValue = 0
       [long]$holderEpochValue = 0
-      if (-not [Int64]::TryParse($holderEpoch, [ref]$holderEpochValue) -or $holderEpochValue -lt 0) {
+      $pidIsNumeric = -not [string]::IsNullOrEmpty($holderPid) -and
+        $holderPid -match '^[0-9]+$' -and [Int64]::TryParse($holderPid, [ref]$holderPidValue)
+      $epochIsNumeric = -not [string]::IsNullOrEmpty($holderEpoch) -and
+        $holderEpoch -match '^[0-9]+$' -and [Int64]::TryParse($holderEpoch, [ref]$holderEpochValue)
+      if ($holderVersion -cne "1" -or $holderImpl -cnotin @("sh", "ps1") -or -not $pidIsNumeric -or
+          -not $epochIsNumeric) {
         throw ("another mirror replacement is already running for $CanonicalRelative; " +
           "lock metadata is incomplete or unreadable; refusing to remove $LockPath")
       }
-      if ($holderImpl -eq "ps1" -and $holderPid -and (Get-Process -Id ([int]$holderPid) -ErrorAction SilentlyContinue)) {
+      if ($holderImpl -eq "ps1" -and $holderPidValue -le [int]::MaxValue -and
+          (Get-Process -Id ([int]$holderPidValue) -ErrorAction SilentlyContinue)) {
         throw "another mirror replacement is already running for $CanonicalRelative (pid $holderPid)"
       }
       $age = [long][double]::Parse((Get-Date -UFormat %s)) - $holderEpochValue

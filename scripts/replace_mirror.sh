@@ -160,7 +160,7 @@ lock_field() {
 
 acquire_mirror_lock() {
   local lock_file="$1" canonical="$2"
-  local attempt holder_impl holder_pid holder_epoch now age
+  local attempt holder_version holder_impl holder_pid holder_epoch now age
   for attempt in 1 2; do
     if ( set -o noclobber
          printf 'version=1\nimpl=sh\npid=%s\nepoch=%s\n' "$$" "$(date +%s)" \
@@ -170,10 +170,14 @@ acquire_mirror_lock() {
     if [ "$attempt" -eq 2 ]; then
       break
     fi
+    holder_version="$(lock_field "$lock_file" version)"
     holder_impl="$(lock_field "$lock_file" impl)"
     holder_pid="$(lock_field "$lock_file" pid)"
     holder_epoch="$(lock_field "$lock_file" epoch)"
-    if [[ ! "$holder_epoch" =~ ^[0-9]+$ ]]; then
+    if [ "$holder_version" != "1" ] || \
+       { [ "$holder_impl" != "sh" ] && [ "$holder_impl" != "ps1" ]; } || \
+       [[ ! "$holder_pid" =~ ^[0-9]+$ ]] || \
+       [[ ! "$holder_epoch" =~ ^[0-9]+$ ]]; then
       echo "another mirror replacement is already running for $canonical" >&2
       echo "lock metadata is incomplete or unreadable; refusing to remove $lock_file" >&2
       return 1
