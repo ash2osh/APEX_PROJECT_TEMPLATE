@@ -124,6 +124,11 @@ UC_APX_SKILLS_AGENT=universal
   Assert-EnvTextRejected ($envText.Replace("TABLES_PREFIXES=SAMPLE_,COMMON_", "TABLES_PREFIXES=SAMPLE_,SAMPLE_")) "PowerShell loader accepted duplicate table prefixes"
   Assert-EnvTextRejected ($envText.Replace("CODE_PREFIXES=SAMPLE_,COMMON_", "CODE_PREFIXES=*,SAMPLE_")) "PowerShell loader accepted a mixed star prefix list"
   Assert-EnvTextRejected ($envText.Replace("CODE_PREFIXES=SAMPLE_,COMMON_", "CODE_PREFIXES=SAMPLE_,")) "PowerShell loader accepted an empty code prefix"
+  Assert-EnvTextRejected ($envText.Replace('PROJECT_NAME=$(throw should-not-run)', 'PROJECT_NAME=inventory # the good one')) "PowerShell loader accepted an inline comment on an unvalidated setting"
+  Assert-EnvTextRejected ($envText.Replace("DB_ENVIRONMENT=development", "DB_ENVIRONMENT=development # active")) "PowerShell loader accepted an inline comment on a validated setting"
+  Assert-EnvTextAccepted ($envText.Replace('PROJECT_NAME=$(throw should-not-run)', 'PROJECT_NAME="release #4"')) "PowerShell loader rejected a quoted value containing '#'"
+  Assert-True ($env:PROJECT_NAME -eq 'release #4') "PowerShell loader mangled a quoted value containing '#'"
+  Assert-EnvTextRejected ($envText.Replace('PROJECT_NAME=$(throw should-not-run)', 'PROJECT_NAME="')) "PowerShell loader accepted a one-character quote as a value"
   Assert-EnvTextAccepted ($envText + "   `n`t`n") "PowerShell loader rejected a whitespace-only line"
   Assert-EnvTextRejected ($envText.Replace('PROJECT_NAME=$(throw should-not-run)', 'PROJECT_NAME=   ')) "PowerShell loader accepted a whitespace-only value"
   foreach ($removedRole in @("TABLES_REQUIRED_ROLE", "CODE_REQUIRED_ROLE", "APEX_REQUIRED_ROLE")) {

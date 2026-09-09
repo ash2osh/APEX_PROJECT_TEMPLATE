@@ -237,6 +237,25 @@ assert_env_rejected "$ENV_FILE" 's/^TABLES_PREFIXES=.*/TABLES_PREFIXES=SAMPLE_,S
 assert_env_rejected "$ENV_FILE" 's/^CODE_PREFIXES=.*/CODE_PREFIXES=*,SAMPLE_/' "environment loader accepted a mixed star prefix list"
 assert_env_rejected "$ENV_FILE" 's/^CODE_PREFIXES=.*/CODE_PREFIXES=SAMPLE_,/' "environment loader accepted an empty code prefix"
 
+# Values are parsed literally, so an unquoted inline comment would be stored
+# verbatim -- silently, for PROJECT_NAME, which has no format rule of its own.
+assert_env_rejected "$ENV_FILE" 's/^PROJECT_NAME=.*/PROJECT_NAME=inventory # the good one/' \
+  "environment loader accepted an inline comment on an unvalidated setting"
+assert_env_rejected "$ENV_FILE" 's/^DB_ENVIRONMENT=.*/DB_ENVIRONMENT=development # active/' \
+  "environment loader accepted an inline comment on a validated setting"
+
+# Quoting is the escape hatch for a value that really contains '#'.
+QUOTED_HASH_ENV_FILE="$TEST_ROOT/quoted-hash.env"
+sed -E 's/^PROJECT_NAME=.*/PROJECT_NAME="release #4"/' "$ENV_FILE" > "$QUOTED_HASH_ENV_FILE"
+QUOTED_HASH_VALUE="$(bash -c 'source "$1" "$2"; printf "%s" "$PROJECT_NAME"' \
+  _ "$REPO_ROOT/scripts/load_env.sh" "$QUOTED_HASH_ENV_FILE")"
+test "$QUOTED_HASH_VALUE" = "release #4" \
+  || fail "environment loader mangled a quoted value containing '#': $QUOTED_HASH_VALUE"
+
+# A one-character quote must not crash either loader.
+assert_env_rejected "$ENV_FILE" 's/^PROJECT_NAME=.*/PROJECT_NAME="/' \
+  "environment loader accepted a one-character quote as a value"
+
 # A whitespace-only line is not a configuration error. PowerShell's
 # IsNullOrWhiteSpace already skips one, so Bash must too -- otherwise a .env
 # authored on Windows loads there and fails on Linux.

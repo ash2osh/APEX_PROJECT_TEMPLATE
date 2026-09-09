@@ -35,9 +35,19 @@ foreach ($projectEnvLine in [System.IO.File]::ReadAllLines($EnvFile)) {
   $projectEnvValue = $Matches[2]
   if ($projectEnvKey -notin $projectEnvAllowed) { throw "project environment error: unsupported setting in ${EnvFile}: $projectEnvKey" }
   if ($projectEnvSeen.ContainsKey($projectEnvKey)) { throw "project environment error: duplicate setting in ${EnvFile}: $projectEnvKey" }
-  if (($projectEnvValue.StartsWith('"') -and $projectEnvValue.EndsWith('"')) -or
-      ($projectEnvValue.StartsWith("'") -and $projectEnvValue.EndsWith("'"))) {
+  # The length guard matters: a one-character value of '"' satisfies both
+  # StartsWith and EndsWith, and Substring(1, -1) throws.
+  $projectEnvQuoted = $false
+  if ($projectEnvValue.Length -ge 2 -and
+      (($projectEnvValue.StartsWith('"') -and $projectEnvValue.EndsWith('"')) -or
+       ($projectEnvValue.StartsWith("'") -and $projectEnvValue.EndsWith("'")))) {
     $projectEnvValue = $projectEnvValue.Substring(1, $projectEnvValue.Length - 2)
+    $projectEnvQuoted = $true
+  } elseif ($projectEnvValue -eq '"' -or $projectEnvValue -eq "'") {
+    throw "project environment error: $projectEnvKey has an unterminated quoted value"
+  }
+  if (-not $projectEnvQuoted -and $projectEnvValue -match '\s#') {
+    throw "project environment error: $projectEnvKey has an inline comment; .env values are parsed literally, so put the comment on its own line, or quote the value to keep a literal '#'"
   }
   Set-Item -LiteralPath "Env:$projectEnvKey" -Value $projectEnvValue
   $projectEnvSeen[$projectEnvKey] = $true
@@ -99,6 +109,6 @@ foreach ($projectEnvKey in @("TABLES_SQLCL_CONNECTION", "CODE_SQLCL_CONNECTION",
 # Mirror load_env.sh, which unsets its own temporaries after a successful load.
 Remove-Variable -Name projectEnvRepoRoot, projectEnvSeen, projectEnvAllowed,
   projectEnvRequired, projectEnvLine, projectEnvKey, projectEnvValue,
-  projectEnvPrefixValue, projectEnvPrefixItem `
+  projectEnvPrefixValue, projectEnvPrefixItem, projectEnvQuoted `
   -ErrorAction SilentlyContinue
 Remove-Item -Path Function:Assert-ProjectEnvUniqueCsv -ErrorAction SilentlyContinue

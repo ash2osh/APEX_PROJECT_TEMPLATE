@@ -48,10 +48,22 @@ while IFS= read -r project_env_line || [ -n "$project_env_line" ]; do
       return 1 2>/dev/null || exit 1
     fi
   done
-  if [[ "$project_env_value" == \"*\" && "$project_env_value" == *\" ]]; then
-    project_env_value="${project_env_value:1:${#project_env_value}-2}"
-  elif [[ "$project_env_value" == \'*\' && "$project_env_value" == *\' ]]; then
-    project_env_value="${project_env_value:1:${#project_env_value}-2}"
+  project_env_quoted=false
+  if [ "${#project_env_value}" -ge 2 ]; then
+    if [[ "$project_env_value" == \"*\" ]] || [[ "$project_env_value" == \'*\' ]]; then
+      project_env_value="${project_env_value:1:${#project_env_value}-2}"
+      project_env_quoted=true
+    fi
+  elif [[ "$project_env_value" == \" || "$project_env_value" == \' ]]; then
+    project_env_fail "$project_env_key has an unterminated quoted value"
+    return 1 2>/dev/null || exit 1
+  fi
+  # Values are parsed literally, so an unquoted inline comment would be stored
+  # verbatim. For the settings with a format rule that surfaces as a confusing
+  # error; for PROJECT_NAME, which has none, it is stored silently.
+  if [ "$project_env_quoted" != true ] && [[ "$project_env_value" =~ [[:space:]]# ]]; then
+    project_env_fail "$project_env_key has an inline comment; .env values are parsed literally, so put the comment on its own line, or quote the value to keep a literal '#'"
+    return 1 2>/dev/null || exit 1
   fi
   printf -v "$project_env_key" '%s' "$project_env_value"
   export "$project_env_key"
@@ -162,4 +174,4 @@ for project_env_key in TABLES_SQLCL_CONNECTION CODE_SQLCL_CONNECTION APEX_SQLCL_
 done
 unset project_env_line project_env_key project_env_value project_env_required
 unset project_env_seen_keys project_env_seen_key project_env_seen_present
-unset project_env_prefix_items project_env_prefix_item
+unset project_env_prefix_items project_env_prefix_item project_env_quoted
