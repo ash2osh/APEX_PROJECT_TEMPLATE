@@ -237,6 +237,18 @@ assert_env_rejected "$ENV_FILE" 's/^TABLES_PREFIXES=.*/TABLES_PREFIXES=SAMPLE_,S
 assert_env_rejected "$ENV_FILE" 's/^CODE_PREFIXES=.*/CODE_PREFIXES=*,SAMPLE_/' "environment loader accepted a mixed star prefix list"
 assert_env_rejected "$ENV_FILE" 's/^CODE_PREFIXES=.*/CODE_PREFIXES=SAMPLE_,/' "environment loader accepted an empty code prefix"
 
+# A whitespace-only line is not a configuration error. PowerShell's
+# IsNullOrWhiteSpace already skips one, so Bash must too -- otherwise a .env
+# authored on Windows loads there and fails on Linux.
+BLANK_LINE_ENV_FILE="$TEST_ROOT/blank-line.env"
+{ cat "$ENV_FILE"; printf '   \n\t\n'; } > "$BLANK_LINE_ENV_FILE"
+bash -c 'source "$1" "$2"' _ "$REPO_ROOT/scripts/load_env.sh" "$BLANK_LINE_ENV_FILE" \
+  || fail "environment loader rejected a whitespace-only line"
+
+# A whitespace-only value IS a configuration error, and both loaders must agree.
+assert_env_rejected "$ENV_FILE" 's/^PROJECT_NAME=.*/PROJECT_NAME=   /' \
+  "environment loader accepted a whitespace-only value"
+
 for removed_role in TABLES_REQUIRED_ROLE CODE_REQUIRED_ROLE APEX_REQUIRED_ROLE; do
   LEGACY_ROLE_ENV_FILE="$TEST_ROOT/legacy-$removed_role.env"
   printf '%s\n' "$(cat "$ENV_FILE")" "$removed_role=NONE" > "$LEGACY_ROLE_ENV_FILE"

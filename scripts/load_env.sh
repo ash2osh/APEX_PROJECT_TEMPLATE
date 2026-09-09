@@ -17,8 +17,14 @@ project_env_seen_keys=()
 while IFS= read -r project_env_line || [ -n "$project_env_line" ]; do
   project_env_line="${project_env_line%$'\r'}"
   case "$project_env_line" in
-    ''|'#'*) continue ;;
+    '#'*) continue ;;
   esac
+  # A line of only whitespace is not a configuration error. PowerShell's
+  # IsNullOrWhiteSpace already skips one, so Bash must agree, or a .env
+  # authored on Windows loads there and fails on Linux.
+  if [ -z "${project_env_line//[[:space:]]/}" ]; then
+    continue
+  fi
   if [[ ! "$project_env_line" =~ ^([A-Z][A-Z0-9_]*)=(.*)$ ]]; then
     project_env_fail "invalid line in $PROJECT_ENV_FILE: $project_env_line"
     return 1 2>/dev/null || exit 1
@@ -67,7 +73,8 @@ for project_env_key in "${project_env_required[@]}"; do
       break
     fi
   done
-  if [ "$project_env_seen_present" != true ] || [ -z "${!project_env_key:-}" ]; then
+  project_env_value="${!project_env_key:-}"
+  if [ "$project_env_seen_present" != true ] || [ -z "${project_env_value//[[:space:]]/}" ]; then
     project_env_fail "$project_env_key is required in $PROJECT_ENV_FILE"
     return 1 2>/dev/null || exit 1
   fi

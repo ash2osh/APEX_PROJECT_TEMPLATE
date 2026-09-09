@@ -55,6 +55,7 @@ APEX_SQLCL_CONNECTION=dev1_SAMPLE_APEX
 APEX_EXPECTED_USER=SAMPLE_APEX
 INSTALL_UC_APX=false
 UC_APX_SKILLS_AGENT=universal
+
 '@
   [System.IO.File]::WriteAllText($baseEnvFile, $envText)
   function Get-Item {
@@ -97,6 +98,16 @@ UC_APX_SKILLS_AGENT=universal
     Assert-True $wasRejected $Message
   }
 
+  function Assert-EnvTextAccepted([string]$Text, [string]$Message) {
+    $validFile = Join-Path $testRoot "valid-$([Guid]::NewGuid().ToString('N')).env"
+    [System.IO.File]::WriteAllText($validFile, $Text)
+    try {
+      . (Join-Path $PSScriptRoot "load_env.ps1") -EnvFile $validFile
+    } catch {
+      Assert-True $false "$Message : $($_.Exception.Message)"
+    }
+  }
+
   $starText = $envText.Replace("TABLES_PREFIXES=SAMPLE_,COMMON_", "TABLES_PREFIXES=*").Replace(
     "CODE_PREFIXES=SAMPLE_,COMMON_", "CODE_PREFIXES=*")
   [System.IO.File]::WriteAllText((Join-Path $testRoot "star-prefix.env"), $starText)
@@ -113,6 +124,8 @@ UC_APX_SKILLS_AGENT=universal
   Assert-EnvTextRejected ($envText.Replace("TABLES_PREFIXES=SAMPLE_,COMMON_", "TABLES_PREFIXES=SAMPLE_,SAMPLE_")) "PowerShell loader accepted duplicate table prefixes"
   Assert-EnvTextRejected ($envText.Replace("CODE_PREFIXES=SAMPLE_,COMMON_", "CODE_PREFIXES=*,SAMPLE_")) "PowerShell loader accepted a mixed star prefix list"
   Assert-EnvTextRejected ($envText.Replace("CODE_PREFIXES=SAMPLE_,COMMON_", "CODE_PREFIXES=SAMPLE_,")) "PowerShell loader accepted an empty code prefix"
+  Assert-EnvTextAccepted ($envText + "   `n`t`n") "PowerShell loader rejected a whitespace-only line"
+  Assert-EnvTextRejected ($envText.Replace('PROJECT_NAME=$(throw should-not-run)', 'PROJECT_NAME=   ')) "PowerShell loader accepted a whitespace-only value"
   foreach ($removedRole in @("TABLES_REQUIRED_ROLE", "CODE_REQUIRED_ROLE", "APEX_REQUIRED_ROLE")) {
     Assert-EnvTextRejected ($envText + "`n$removedRole=NONE`n") "PowerShell loader accepted removed role setting $removedRole"
   }
