@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import shutil
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -30,18 +32,21 @@ class GraphifyPatchTests(unittest.TestCase):
     def tearDown(self) -> None:
         shutil.rmtree(self.root)
 
-    def write_package(self) -> None:
-        (self.root / "extractors").mkdir()
-        (self.root / "detect.py").write_text(
+    def write_package_at(self, base: Path) -> None:
+        (base / "extractors").mkdir(parents=True, exist_ok=True)
+        (base / "detect.py").write_text(
             "CODE_EXTENSIONS = {'.sql',}\n",
             encoding="utf-8",
         )
-        (self.root / "extract.py").write_text(
+        (base / "extract.py").write_text(
             "from graphify.extractors.sql import extract_sql  # noqa: F401\n"
             '_DISPATCH = {\n    ".sql": extract_sql,\n}\n'
             '_EXTRA_FOR_EXTENSION = {\n    ".sql": "sql",\n}\n',
             encoding="utf-8",
         )
+
+    def write_package(self) -> None:
+        self.write_package_at(self.root)
 
     def test_missing_required_module_fails(self) -> None:
         (self.root / "detect.py").write_text("EXTENSIONS = {'.sql',}\n", encoding="utf-8")
@@ -154,6 +159,32 @@ class GraphifyPatchTests(unittest.TestCase):
         self.assertEqual(removed, 1)
         self.assertFalse(apx_cache.exists())
         self.assertTrue(sql_cache.exists())
+
+    def test_invalidates_apx_cache_when_only_some_directories_patch(self) -> None:
+        good = self.root / "good"
+        broken = self.root / "broken"
+        self.write_package_at(good)
+        self.write_package_at(broken)
+        (broken / "extract.py").write_text("nothing to anchor on\n", encoding="utf-8")
+        cache = MODULE.REPO_ROOT / "graphify-out" / "cache" / "ast"
+        cache.mkdir(parents=True, exist_ok=True)
+        stale = cache / "partial-setup-fixture.json"
+        stale.write_text(
+            json.dumps({"nodes": [{"source_file": "apps/DEMO/101/pages/p1.apx"}]}),
+            encoding="utf-8",
+        )
+        self.addCleanup(lambda: stale.unlink(missing_ok=True))
+        with mock.patch.object(
+            MODULE, "find_graphify_dirs", return_value=[str(good), str(broken)]
+        ):
+            self.assertFalse(MODULE.setup_graphify_apx())
+        self.assertFalse(
+            stale.exists(),
+            "a partially successful setup must still invalidate stale .apx cache",
+        )
+
+    def test_prefers_the_interpreter_behind_the_graphify_console_script(self) -> None:
+        self.assertTrue(hasattr(MODULE, "graphify_console_interpreter"))
 
 
 if __name__ == "__main__":

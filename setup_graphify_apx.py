@@ -19,16 +19,62 @@ CANONICAL_EXTRACTOR = REPO_ROOT / "scripts" / "graphify_apexlang_extractor.py"
 # The exact text this installer writes; the only proof that .apx is ours.
 DETECT_MARKER = "'.sql', '.apx',"
 
+
+def graphify_console_interpreter() -> str | None:
+    """Return the interpreter behind the `graphify` console script on PATH.
+
+    A `uv tool install` gives Graphify its own isolated interpreter, so
+    importing graphify in *this* process usually finds nothing, or finds a
+    different copy. The console script's shebang names the right one. Windows
+    shims are compiled .exe launchers with no shebang to read.
+    """
+    graphify_bin = shutil.which("graphify")
+    if not graphify_bin or not os.path.exists(graphify_bin):
+        return None
+    try:
+        with open(graphify_bin, "r", encoding="utf-8") as handle:
+            first_line = handle.readline()
+    except (UnicodeDecodeError, OSError):
+        return None
+    if not first_line.startswith("#!"):
+        return None
+    interpreter = first_line.strip()[2:].strip()
+    return interpreter if os.path.exists(interpreter) else None
+
+
 def find_graphify_dirs():
+    # 1. The interpreter behind `graphify` on PATH is the installation that
+    #    actually runs. Patch only that one when it can be resolved: sweeping
+    #    every globbed path makes an orphaned environment fail the whole setup.
+    interpreter = graphify_console_interpreter()
+    if interpreter:
+        try:
+            located = subprocess.run(
+                [
+                    interpreter,
+                    "-c",
+                    "import graphify, os; print(os.path.dirname(graphify.__file__))",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if located.returncode == 0 and located.stdout.strip():
+                candidate = located.stdout.strip()
+                if os.path.isdir(candidate):
+                    return [candidate]
+        except (OSError, subprocess.SubprocessError):
+            pass
+
     dirs = []
-    # 1. Try importing graphify in current python
+    # 2. Fall back to this interpreter, then to a filesystem sweep.
     try:
         import graphify
         dirs.append(os.path.dirname(graphify.__file__))
     except Exception:
         pass
 
-    # 2. Search common uv / virtualenv locations (Linux/macOS)
+    # 3. Search common uv / virtualenv locations (Linux/macOS)
     user_home = os.path.expanduser("~")
     uv_paths = glob.glob(os.path.join(user_home, ".local/share/uv/tools/graphify*/lib/python*/site-packages/graphify"))
     dirs.extend(uv_paths)
@@ -36,7 +82,7 @@ def find_graphify_dirs():
     pip_paths = glob.glob(os.path.join(user_home, ".local/lib/python*/site-packages/graphify"))
     dirs.extend(pip_paths)
 
-    # 3. Search common uv / pip user-install locations (Windows)
+    # 4. Search common uv / pip user-install locations (Windows)
     appdata = os.environ.get("APPDATA")
     localappdata = os.environ.get("LOCALAPPDATA")
     if appdata:
@@ -45,6 +91,9 @@ def find_graphify_dirs():
     if localappdata:
         dirs.extend(glob.glob(os.path.join(localappdata, "uv", "tools", "graphify*", "Lib", "site-packages", "graphify")))
 
+    if len(dirs) > 1:
+        print("Warning: could not resolve the active Graphify from PATH; "
+              f"patching {len(dirs)} candidate installation(s)")
     return sorted(set(dirs))
 
 
@@ -258,13 +307,20 @@ def setup_graphify_apx() -> bool:
               "  uv tool install graphifyy --with tree-sitter-sql")
         return False
 
-    results = [patch_graphify_dir(Path(base)) for base in g_dirs]
-    if not all(results):
+    results = {base: patch_graphify_dir(Path(base)) for base in g_dirs}
+    for base, patched in results.items():
+        if not patched:
+            print(f"Warning: Graphify at '{base}' was not configured")
+    if not any(results.values()):
         return False
+    # A cache invalidation skipped because some *other* installation failed is
+    # how the graph ends up with cached .apx results from the former SQL route:
+    # zero architectural relationships, no error. Invalidate whenever any
+    # installation was actually patched.
     removed = invalidate_apx_cache(REPO_ROOT / "graphify-out" / "cache" / "ast")
     if removed:
         print(f"Invalidated {removed} stale APEXlang AST cache entr{'y' if removed == 1 else 'ies'}")
-    return True
+    return all(results.values())
 
 if __name__ == "__main__":
     raise SystemExit(0 if setup_graphify_apx() else 1)
