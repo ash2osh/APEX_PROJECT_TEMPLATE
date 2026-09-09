@@ -90,7 +90,7 @@ if ([System.IO.Path]::GetPathRoot($stagedPath) -ne [System.IO.Path]::GetPathRoot
   throw "staging and destination must be on the same filesystem volume"
 }
 $mirrorName = Split-Path -Leaf $destinationPath
-$backupPath = Join-Path $scratchPath (".mirror-backup.{0}.{1}" -f $mirrorName, $PID)
+$backupPath = Join-Path $scratchPath (".mirror-backup.{0}.{1}.{2}" -f $mirrorName, $PID, $Index)
 if (Test-Path -LiteralPath $backupPath) {
   throw "temporary replacement path already exists: $backupPath"
 }
@@ -99,7 +99,7 @@ if (Test-Path -LiteralPath $backupPath) {
     StagedPath = $stagedPath
     DestinationPath = $destinationPath
     CanonicalRelative = $canonicalRelativeDestination
-    BackupPath = Join-Path $scratchPath (".mirror-backup.{0}.{1}.{2}" -f $mirrorName, $PID, $Index)
+    BackupPath = $backupPath
   }
 }
 
@@ -219,13 +219,18 @@ try {
     }
   }
 
+  $pairIndex = 0
   foreach ($pair in $validated) {
     if (Test-Path -LiteralPath $pair.DestinationPath) {
       Move-Item -LiteralPath $pair.DestinationPath -Destination $pair.BackupPath
       $movedDestination += $pair
     }
+    if ($env:MIRROR_SYNC_TEST_FAIL_STAGED_MOVE_INDEX -eq "$pairIndex") {
+      throw "test-only staged mirror move failure at index $pairIndex"
+    }
     Move-Item -LiteralPath $pair.StagedPath -Destination $pair.DestinationPath
     $installed += $pair
+    $pairIndex += 1
   }
 } catch {
   $originalErrorMessage = $_.Exception.Message

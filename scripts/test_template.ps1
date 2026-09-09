@@ -26,8 +26,37 @@ try {
   Assert-True (Test-Path -LiteralPath (Join-Path $testRepo "database/mirror/new.txt")) "new mirror content was not installed"
   Assert-True (-not (Test-Path -LiteralPath (Join-Path $testRepo "database/mirror/stale.txt"))) "stale mirror content was retained"
 
-  & git -C $testRepo add -A database/mirror
-  & git -C $testRepo -c user.name=TemplateTest -c user.email=test@example.invalid commit -qm "clean lock fixture"
+  # A real failure after the first staged replacement must unwind both mirrors.
+  New-Item -ItemType Directory -Force -Path @(
+    (Join-Path $testRepo "database/atomic-one"),
+    (Join-Path $testRepo "database/atomic-two"),
+    (Join-Path $testRepo "scratch/atomic-one"),
+    (Join-Path $testRepo "scratch/atomic-two")
+  ) | Out-Null
+  [System.IO.File]::WriteAllText((Join-Path $testRepo "database/atomic-one/value.txt"), "old one`n")
+  [System.IO.File]::WriteAllText((Join-Path $testRepo "database/atomic-two/value.txt"), "old two`n")
+  & git -C $testRepo add database/atomic-one database/atomic-two database/mirror
+  & git -C $testRepo -c user.name=TemplateTest -c user.email=test@example.invalid commit -qm "seed atomic replacement mirrors"
+  [System.IO.File]::WriteAllText((Join-Path $testRepo "scratch/atomic-one/value.txt"), "new one`n")
+  [System.IO.File]::WriteAllText((Join-Path $testRepo "scratch/atomic-two/value.txt"), "new two`n")
+  $previousFailIndex = $env:MIRROR_SYNC_TEST_FAIL_STAGED_MOVE_INDEX
+  $env:MIRROR_SYNC_TEST_FAIL_STAGED_MOVE_INDEX = "1"
+  $rejected = $false
+  try {
+    & (Join-Path $testRepo "scripts/replace_mirror.ps1") `
+      (Join-Path $testRepo "scratch/atomic-one") "database/atomic-one" `
+      (Join-Path $testRepo "scratch/atomic-two") "database/atomic-two"
+  } catch {
+    $rejected = $true
+  } finally {
+    $env:MIRROR_SYNC_TEST_FAIL_STAGED_MOVE_INDEX = $previousFailIndex
+  }
+  Assert-True $rejected "test-only second staged move failure was accepted"
+  Assert-True (([System.IO.File]::ReadAllText((Join-Path $testRepo "database/atomic-one/value.txt"))).Trim() -eq "old one") "PowerShell rollback did not restore the first mirror"
+  Assert-True (([System.IO.File]::ReadAllText((Join-Path $testRepo "database/atomic-two/value.txt"))).Trim() -eq "old two") "PowerShell rollback did not restore the second mirror"
+  $dirtyAtomic = @(git -C $testRepo status --porcelain -- database/atomic-one database/atomic-two)
+  Assert-True ([string]::IsNullOrWhiteSpace(($dirtyAtomic -join "`n"))) "PowerShell rollback left an atomic mirror dirty"
+
   $lockRoot = Join-Path $testRepo "scratch/.mirror-locks"
   New-Item -ItemType Directory -Force -Path $lockRoot | Out-Null
   $sha = [System.Security.Cryptography.SHA256]::Create()

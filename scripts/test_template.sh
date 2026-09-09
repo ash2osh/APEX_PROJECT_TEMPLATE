@@ -46,6 +46,75 @@ MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
 test -f "$TEST_REPO/database/mirror/new.txt" || fail "new mirror content was not installed"
 test ! -e "$TEST_REPO/database/mirror/stale.txt" || fail "stale mirror content was retained"
 
+# A real failure after the first staged replacement must unwind both mirrors.
+mkdir -p "$TEST_REPO/database/atomic-one" "$TEST_REPO/database/atomic-two" \
+  "$TEST_REPO/scratch/atomic-one" "$TEST_REPO/scratch/atomic-two"
+printf 'old one\n' > "$TEST_REPO/database/atomic-one/value.txt"
+printf 'old two\n' > "$TEST_REPO/database/atomic-two/value.txt"
+git -C "$TEST_REPO" add database/atomic-one database/atomic-two database/mirror
+git -C "$TEST_REPO" -c user.name=TemplateTest -c user.email=test@example.invalid commit -qm "seed atomic replacement mirrors"
+printf 'new one\n' > "$TEST_REPO/scratch/atomic-one/value.txt"
+printf 'new two\n' > "$TEST_REPO/scratch/atomic-two/value.txt"
+if MIRROR_SYNC_TEST_FAIL_STAGED_MOVE_INDEX=1 MIRROR_SYNC_REPO_ROOT="$TEST_REPO" \
+    "$REPO_ROOT/scripts/replace_mirror.sh" \
+    "$TEST_REPO/scratch/atomic-one" "database/atomic-one" \
+    "$TEST_REPO/scratch/atomic-two" "database/atomic-two"; then
+  fail "test-only second staged move failure was accepted"
+fi
+test "$(cat "$TEST_REPO/database/atomic-one/value.txt")" = "old one" \
+  || fail "Bash rollback did not restore the first mirror"
+test "$(cat "$TEST_REPO/database/atomic-two/value.txt")" = "old two" \
+  || fail "Bash rollback did not restore the second mirror"
+test -z "$(git -C "$TEST_REPO" status --porcelain -- database/atomic-one database/atomic-two)" \
+  || fail "Bash rollback left an atomic mirror dirty"
+
+# The indexed backup path is the one the move uses, so it must be rejected
+# during validation before any lock or move. Pause the first Git query until
+# the background replacement PID is known, then create that exact path.
+mkdir -p "$TEST_REPO/database/collision" "$TEST_REPO/scratch/collision-staged"
+printf 'old collision\n' > "$TEST_REPO/database/collision/value.txt"
+git -C "$TEST_REPO" add database/collision
+git -C "$TEST_REPO" -c user.name=TemplateTest -c user.email=test@example.invalid commit -qm "seed indexed backup collision"
+printf 'new collision\n' > "$TEST_REPO/scratch/collision-staged/value.txt"
+COLLISION_GIT_BIN="$TEST_REPO/scratch/collision-git-bin"
+COLLISION_READY="$TEST_REPO/scratch/collision-ready"
+COLLISION_RELEASE="$TEST_REPO/scratch/collision-release"
+COLLISION_WAITED="$TEST_REPO/scratch/collision-waited"
+mkdir -p "$COLLISION_GIT_BIN"
+cat > "$COLLISION_GIT_BIN/git" <<'GIT'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ ! -e "$MIRROR_SYNC_TEST_COLLISION_WAITED" ]; then
+  : > "$MIRROR_SYNC_TEST_COLLISION_READY"
+  while [ ! -e "$MIRROR_SYNC_TEST_COLLISION_RELEASE" ]; do sleep 0.01; done
+  : > "$MIRROR_SYNC_TEST_COLLISION_WAITED"
+fi
+exec "$MIRROR_SYNC_TEST_REAL_GIT" "$@"
+GIT
+chmod +x "$COLLISION_GIT_BIN/git"
+MIRROR_SYNC_TEST_COLLISION_READY="$COLLISION_READY" \
+  MIRROR_SYNC_TEST_COLLISION_RELEASE="$COLLISION_RELEASE" \
+  MIRROR_SYNC_TEST_COLLISION_WAITED="$COLLISION_WAITED" \
+  MIRROR_SYNC_TEST_REAL_GIT="$(command -v git)" PATH="$COLLISION_GIT_BIN:$PATH" \
+  MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
+  "$TEST_REPO/scratch/collision-staged" "database/collision" \
+  > "$TEST_REPO/scratch/collision.log" 2>&1 &
+COLLISION_PID=$!
+for _ in $(seq 1 100); do
+  [ -e "$COLLISION_READY" ] && break
+  sleep 0.01
+done
+[ -e "$COLLISION_READY" ] || fail "indexed backup collision fixture did not reach validation"
+mkdir "$TEST_REPO/scratch/.mirror-backup.collision.$COLLISION_PID.0"
+: > "$COLLISION_RELEASE"
+set +e
+wait "$COLLISION_PID"
+collision_status=$?
+set -e
+test "$collision_status" -ne 0 || fail "indexed backup collision was accepted"
+test "$(cat "$TEST_REPO/database/collision/value.txt")" = "old collision" \
+  || fail "indexed backup collision changed the mirror"
+
 mkdir -p "$TEST_REPO/apps/schema/app" "$TEST_REPO/scratch/dotdot-staged"
 printf 'tracked\n' > "$TEST_REPO/apps/schema/app/tracked.txt"
 git -C "$TEST_REPO" add apps/schema/app/tracked.txt

@@ -11,6 +11,7 @@ fi
 STAGED_DIRS=()
 DEST_DIRS=()
 CANONICAL_RELS=()
+BACKUP_DIRS=()
 
 validate_pair() {
 STAGED_DIR_ARG="$1"
@@ -124,7 +125,8 @@ if [ "$(device_id "$STAGED_DIR")" != "$(device_id "$DEST_PARENT")" ]; then
 fi
 
 MIRROR_NAME="$(basename -- "$DEST_DIR")"
-BACKUP_DIR="$REPO_ROOT/scratch/.mirror-backup.${MIRROR_NAME}.$$"
+PAIR_INDEX="${#STAGED_DIRS[@]}"
+BACKUP_DIR="$REPO_ROOT/scratch/.mirror-backup.${MIRROR_NAME}.$$.$PAIR_INDEX"
 if [ -e "$BACKUP_DIR" ] || [ -L "$BACKUP_DIR" ]; then
   echo "temporary replacement path already exists: $BACKUP_DIR" >&2
   exit 1
@@ -133,6 +135,7 @@ fi
 STAGED_DIRS+=("$STAGED_DIR")
 DEST_DIRS+=("$DEST_DIR")
 CANONICAL_RELS+=("$CANONICAL_REL")
+BACKUP_DIRS+=("$BACKUP_DIR")
 }
 
 # Lock protocol v1. Both implementations must agree, because on Windows a
@@ -226,7 +229,6 @@ mkdir -p "$LOCK_ROOT"
 ACQUIRED_LOCKS=()
 INSTALLED_INDEXES=()
 MOVED_DEST_INDEXES=()
-BACKUP_DIRS=()
 
 release_locks() {
   local lock_file
@@ -271,7 +273,6 @@ for (( PAIR_INDEX=0; PAIR_INDEX < ${#STAGED_DIRS[@]}; PAIR_INDEX++ )); do
   LOCK_FILE="$LOCK_ROOT/$(lock_digest "${CANONICAL_RELS[$PAIR_INDEX]}").lock"
   acquire_mirror_lock "$LOCK_FILE" "${CANONICAL_RELS[$PAIR_INDEX]}" || exit 1
   ACQUIRED_LOCKS+=("$LOCK_FILE")
-  BACKUP_DIRS+=("$REPO_ROOT/scratch/.mirror-backup.$(basename -- "${DEST_DIRS[$PAIR_INDEX]}").$$.$PAIR_INDEX")
 done
 
 # Recheck every mirror after taking every lock, to close the check-to-replace
@@ -285,6 +286,10 @@ for (( PAIR_INDEX=0; PAIR_INDEX < ${#STAGED_DIRS[@]}; PAIR_INDEX++ )); do
   if [ -e "${DEST_DIRS[$PAIR_INDEX]}" ] || [ -L "${DEST_DIRS[$PAIR_INDEX]}" ]; then
     mv -- "${DEST_DIRS[$PAIR_INDEX]}" "${BACKUP_DIRS[$PAIR_INDEX]}"
     MOVED_DEST_INDEXES+=("$PAIR_INDEX")
+  fi
+  if [ "${MIRROR_SYNC_TEST_FAIL_STAGED_MOVE_INDEX:-}" = "$PAIR_INDEX" ]; then
+    echo "test-only staged mirror move failure at index $PAIR_INDEX" >&2
+    exit 1
   fi
   mv -- "${STAGED_DIRS[$PAIR_INDEX]}" "${DEST_DIRS[$PAIR_INDEX]}"
   INSTALLED_INDEXES+=("$PAIR_INDEX")
