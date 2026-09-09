@@ -143,6 +143,17 @@ print(json.dumps({path: _is_ignored(root / path, root, patterns) for path in pat
         self.assertIn("Graphify upgrade", workflow)
         self.assertIn("python3 setup_graphify_apx.py", readme)
 
+    def test_graphify_status_is_stated_consistently(self) -> None:
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        agents = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        rules = (REPO_ROOT / ".agents/rules/graphify.md").read_text(encoding="utf-8")
+        # Every rule in the rules file is gated on graphify-out/ existing, and
+        # the scripts work without Graphify. "Required" in the README was the
+        # outlier, and agents read AGENTS.md as authoritative.
+        self.assertNotIn("Graphify is required for this project", readme)
+        self.assertIn("optional", agents.lower())
+        self.assertIn("if `graphify-out/`", rules)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -20,7 +20,7 @@ anything in this repository:
 | **Python 3.10+** | Graphify, `setup_graphify_apx.py`, and the repository's own scripts and test suite |
 | **Node.js** | The `apex` skill's APEXlang tooling — `node tools/apexctl.mjs` drives `apexlang format`, grammar validation, and `runtime validate` for `.apx` sources |
 | **[uv](https://docs.astral.sh/uv/)** | Installing Graphify and its SQL parser as an isolated tool |
-| **Graphify** | Required. The knowledge graph this template is built around; see [Knowledge graph](#knowledge-graph) below |
+| **Graphify** | Strongly recommended. The knowledge graph this template is built around; everything works without it, but agents fall back on grep. See [Knowledge graph](#knowledge-graph) below |
 | **tree-sitter-sql** | Graphify's SQL parser. Without it the `database/` mirror and `apps/**/supporting-objects/*.sql` cannot be indexed at all |
 | **SQLcl** | Every database and APEX export, backup, and deployment command |
 | **Git** | The export and backup scripts refuse to overwrite a dirty mirror |
@@ -47,7 +47,10 @@ sql -S -noupdates /nolog -e "skills sync"
 
 ### Knowledge graph
 
-Graphify is required for this project. It indexes a domain-only corpus
+Graphify is optional, and strongly recommended. Every script, guard, and export
+in this template works without it; what you lose is the scoped-subgraph answer
+to architecture questions, and agents fall back on repository-wide grep. It
+indexes a domain-only corpus
 (`apps/`, `database/`, and `app_context/`) through a repository-owned APEXlang
 extractor, so `.apx` files are read as APEX architecture — application and page
 containment, navigation, authorization, database reads and writes, and PL/SQL

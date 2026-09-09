@@ -6,7 +6,8 @@ description: Consult the domain-focused graphify knowledge graph for APEX applic
 ## graphify
 
 This project can use a domain-focused graphify knowledge graph at graphify-out/, if the
-`graphify` CLI is installed (https://github.com/ash2osh — see `AGENTS.md`
+`graphify` CLI is installed (`uv tool install graphifyy --with tree-sitter-sql`
+— note the distribution is `graphifyy` and the command is `graphify`; see
 "Optional Tooling"). It is not guaranteed to be present; if `graphify-out/`
 does not exist, none of the rules below apply — fall back to normal
 file reads and grep.
