@@ -120,14 +120,80 @@ if [ -e "$BACKUP_DIR" ] || [ -L "$BACKUP_DIR" ]; then
   exit 1
 fi
 
+# Lock protocol v1. Both implementations must agree, because on Windows a
+# Git Bash run and a PowerShell run can target the same mirror.
+#
+#   path:     scratch/.mirror-locks/<first 16 hex of sha256(canonical-rel)>.lock
+#   contents: version=1 / impl=sh|ps1 / pid=<n> / epoch=<unix seconds>, LF each
+#
+#   acquire:  atomic exclusive create (noclobber redirect / FileMode::CreateNew).
+#             On failure, read the holder's fields:
+#               - same impl and pid alive  -> real contention, refuse
+#               - otherwise, epoch older than MIRROR_LOCK_STALE_SECONDS
+#                                          -> break the lock and retry once
+#               - otherwise                -> refuse, naming the file and the
+#                                             remaining wait
+#   release:  delete the file (EXIT trap / finally)
+#
+# PowerShell opens with FileShare::Read, not None, so the Bash side can still
+# read the metadata of a live PowerShell lock. CreateNew, not OpenOrCreate:
+# OpenOrCreate would let PowerShell silently steal a Bash lock, because Bash
+# holds no OS handle. Cross-implementation liveness cannot be checked (the pid
+# namespaces differ under MSYS), so cross-impl contention degrades to the
+# staleness window. Same-impl contention is always detected exactly.
+MIRROR_LOCK_STALE_SECONDS="${MIRROR_LOCK_STALE_SECONDS:-900}"
+
+lock_digest() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    printf '%s' "$1" | sha256sum | cut -c1-16
+  elif command -v shasum >/dev/null 2>&1; then
+    printf '%s' "$1" | shasum -a 256 | cut -c1-16
+  else
+    printf '%s' "$1" | cksum | awk '{printf "%016x", $1}'
+  fi
+}
+
+lock_field() {
+  sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1 | tr -d '\r'
+}
+
+acquire_mirror_lock() {
+  local lock_file="$1" canonical="$2"
+  local attempt holder_impl holder_pid holder_epoch now age
+  for attempt in 1 2; do
+    if ( set -o noclobber
+         printf 'version=1\nimpl=sh\npid=%s\nepoch=%s\n' "$$" "$(date +%s)" \
+           > "$lock_file" ) 2>/dev/null; then
+      return 0
+    fi
+    if [ "$attempt" -eq 2 ]; then
+      break
+    fi
+    holder_impl="$(lock_field "$lock_file" impl)"
+    holder_pid="$(lock_field "$lock_file" pid)"
+    holder_epoch="$(lock_field "$lock_file" epoch)"
+    now="$(date +%s)"
+    if [ "$holder_impl" = sh ] && [ -n "$holder_pid" ] && kill -0 "$holder_pid" 2>/dev/null; then
+      echo "another mirror replacement is already running for $canonical (pid $holder_pid)" >&2
+      return 1
+    fi
+    age=$(( now - ${holder_epoch:-0} ))
+    if [ -z "$holder_epoch" ] || [ "$age" -ge "$MIRROR_LOCK_STALE_SECONDS" ]; then
+      echo "breaking stale mirror lock for $canonical (impl=${holder_impl:-unknown} pid=${holder_pid:-unknown} age=${age}s)" >&2
+      rm -f -- "$lock_file"
+      continue
+    fi
+    echo "another mirror replacement is already running for $canonical" >&2
+    echo "if that process is gone, remove $lock_file or wait $(( MIRROR_LOCK_STALE_SECONDS - age )) seconds" >&2
+    return 1
+  done
+  return 1
+}
+
 LOCK_ROOT="$SCRATCH_ROOT/.mirror-locks"
 mkdir -p "$LOCK_ROOT"
-LOCK_KEY="$(printf '%s' "$CANONICAL_REL" | cksum | awk '{print $1}')"
-LOCK_DIR="$LOCK_ROOT/$LOCK_KEY.lock"
-if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  echo "another mirror replacement is already running for $CANONICAL_REL" >&2
-  exit 1
-fi
+LOCK_FILE="$LOCK_ROOT/$(lock_digest "$CANONICAL_REL").lock"
+acquire_mirror_lock "$LOCK_FILE" "$CANONICAL_REL" || exit 1
 
 ROLLBACK_PENDING=0
 cleanup_replacement() {
@@ -140,7 +206,7 @@ cleanup_replacement() {
       cleanup_status=1
     fi
   fi
-  rmdir "$LOCK_DIR" 2>/dev/null || true
+  rm -f -- "$LOCK_FILE" 2>/dev/null || true
   trap - EXIT
   exit "$cleanup_status"
 }

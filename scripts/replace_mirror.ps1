@@ -89,6 +89,77 @@ if (Test-Path -LiteralPath $backupPath) {
   throw "temporary replacement path already exists: $backupPath"
 }
 
+# Lock protocol v1. Both implementations must agree, because on Windows a
+# Git Bash run and a PowerShell run can target the same mirror.
+#
+#   path:     scratch/.mirror-locks/<first 16 hex of sha256(canonical-rel)>.lock
+#   contents: version=1 / impl=sh|ps1 / pid=<n> / epoch=<unix seconds>, LF each
+#
+#   acquire:  atomic exclusive create (noclobber redirect / FileMode::CreateNew).
+#             On failure, read the holder's fields:
+#               - same impl and pid alive  -> real contention, refuse
+#               - otherwise, epoch older than MIRROR_LOCK_STALE_SECONDS
+#                                          -> break the lock and retry once
+#               - otherwise                -> refuse, naming the file and the
+#                                             remaining wait
+#   release:  delete the file (EXIT trap / finally)
+#
+# PowerShell opens with FileShare::Read, not None, so the Bash side can still
+# read the metadata of a live PowerShell lock. CreateNew, not OpenOrCreate:
+# OpenOrCreate would let PowerShell silently steal a Bash lock, because Bash
+# holds no OS handle. Cross-implementation liveness cannot be checked (the pid
+# namespaces differ under MSYS), so cross-impl contention degrades to the
+# staleness window. Same-impl contention is always detected exactly.
+$mirrorLockStaleSeconds = 900
+if (-not [string]::IsNullOrWhiteSpace($env:MIRROR_LOCK_STALE_SECONDS)) {
+  $mirrorLockStaleSeconds = [int]$env:MIRROR_LOCK_STALE_SECONDS
+}
+
+function Get-MirrorLockField([string]$Path, [string]$Key) {
+  try { $lines = [System.IO.File]::ReadAllLines($Path) } catch { return $null }
+  foreach ($line in $lines) {
+    $trimmed = $line.TrimEnd("`r")
+    if ($trimmed.StartsWith("$Key=")) { return $trimmed.Substring($Key.Length + 1) }
+  }
+  return $null
+}
+
+function Enter-MirrorLock([string]$LockPath, [string]$CanonicalRelative) {
+  foreach ($attempt in 1, 2) {
+    try {
+      # FileShare::Read, so a Bash run can still read a live lock's metadata.
+      $stream = [System.IO.File]::Open($LockPath, [System.IO.FileMode]::CreateNew,
+        [System.IO.FileAccess]::Write, [System.IO.FileShare]::Read)
+      $epoch = [int][double]::Parse((Get-Date -UFormat %s))
+      $payload = [System.Text.Encoding]::UTF8.GetBytes(
+        "version=1`nimpl=ps1`npid=$PID`nepoch=$epoch`n")
+      $stream.Write($payload, 0, $payload.Length)
+      $stream.Flush()
+      return $stream
+    } catch [System.IO.IOException] {
+      if ($attempt -eq 2) { break }
+      $holderImpl = Get-MirrorLockField -Path $LockPath -Key "impl"
+      $holderPid = Get-MirrorLockField -Path $LockPath -Key "pid"
+      $holderEpoch = Get-MirrorLockField -Path $LockPath -Key "epoch"
+      if ($holderImpl -eq "ps1" -and $holderPid -and (Get-Process -Id ([int]$holderPid) -ErrorAction SilentlyContinue)) {
+        throw "another mirror replacement is already running for $CanonicalRelative (pid $holderPid)"
+      }
+      $age = $mirrorLockStaleSeconds
+      if ($holderEpoch) {
+        $age = [int][double]::Parse((Get-Date -UFormat %s)) - [int]$holderEpoch
+      }
+      if (-not $holderEpoch -or $age -ge $mirrorLockStaleSeconds) {
+        Write-Warning "breaking stale mirror lock for $CanonicalRelative (impl=$holderImpl pid=$holderPid age=${age}s)"
+        Remove-Item -LiteralPath $LockPath -Force -ErrorAction SilentlyContinue
+        continue
+      }
+      throw ("another mirror replacement is already running for $CanonicalRelative; " +
+        "if that process is gone, remove $LockPath or wait $($mirrorLockStaleSeconds - $age) seconds")
+    }
+  }
+  throw "could not acquire the mirror lock for $CanonicalRelative"
+}
+
 $lockRoot = Join-Path $scratchRoot ".mirror-locks"
 New-Item -ItemType Directory -Force -Path $lockRoot | Out-Null
 # SHA256::HashData and Convert::ToHexString are .NET 5+, so they are missing on
@@ -99,13 +170,9 @@ try {
 } finally {
   $sha256.Dispose()
 }
-$lockName = ([System.BitConverter]::ToString($hashBytes) -replace '-', '').Substring(0, 16) + ".lock"
+$lockName = ([System.BitConverter]::ToString($hashBytes) -replace '-', '').Substring(0, 16).ToLowerInvariant() + ".lock"
 $lockPath = Join-Path $lockRoot $lockName
-try {
-  $lockHandle = [System.IO.File]::Open($lockPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
-} catch {
-  throw "another mirror replacement is already running for $canonicalRelativeDestination"
-}
+$lockHandle = Enter-MirrorLock -LockPath $lockPath -CanonicalRelative $canonicalRelativeDestination
 
 $hadOldMirror = Test-Path -LiteralPath $destinationPath
 try {

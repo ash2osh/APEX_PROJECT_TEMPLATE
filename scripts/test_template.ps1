@@ -26,6 +26,23 @@ try {
   Assert-True (Test-Path -LiteralPath (Join-Path $testRepo "database/mirror/new.txt")) "new mirror content was not installed"
   Assert-True (-not (Test-Path -LiteralPath (Join-Path $testRepo "database/mirror/stale.txt"))) "stale mirror content was retained"
 
+  & git -C $testRepo add -A database/mirror
+  & git -C $testRepo -c user.name=TemplateTest -c user.email=test@example.invalid commit -qm "clean lock fixture"
+  $lockRoot = Join-Path $testRepo "scratch/.mirror-locks"
+  New-Item -ItemType Directory -Force -Path $lockRoot | Out-Null
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $lockBytes = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes("database/mirror"))
+  } finally { $sha.Dispose() }
+  $lockName = ([System.BitConverter]::ToString($lockBytes) -replace '-', '').Substring(0, 16).ToLowerInvariant() + ".lock"
+  $lockPath = Join-Path $lockRoot $lockName
+  [System.IO.File]::WriteAllText($lockPath, "version=1`nimpl=ps1`npid=999999`nepoch=1`n")
+  New-Item -ItemType Directory -Force -Path (Join-Path $testRepo "scratch/lock-staged") | Out-Null
+  [System.IO.File]::WriteAllText((Join-Path $testRepo "scratch/lock-staged/file.txt"), "content`n")
+  & (Join-Path $testRepo "scripts/replace_mirror.ps1") `
+    -StagedDir (Join-Path $testRepo "scratch/lock-staged") -Destination "database/mirror"
+  Assert-True (-not (Test-Path -LiteralPath $lockPath)) "a stale mirror lock was not broken and released"
+
   New-Item -ItemType Directory -Force -Path (Join-Path $testRepo "scratch/dotdot") | Out-Null
   [System.IO.File]::WriteAllText((Join-Path $testRepo "scratch/dotdot/file.txt"), "content`n")
   $rejected = $false

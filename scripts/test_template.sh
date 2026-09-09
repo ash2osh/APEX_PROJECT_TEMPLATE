@@ -110,6 +110,33 @@ if MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
   fail "dirty mirror replacement was not refused"
 fi
 
+git -C "$TEST_REPO" add -A database/mirror
+git -C "$TEST_REPO" -c user.name=TemplateTest -c user.email=test@example.invalid commit -qm "clean lock fixture"
+
+# A killed process used to leave a lock that blocked every future run forever.
+LOCK_ROOT="$TEST_REPO/scratch/.mirror-locks"
+mkdir -p "$LOCK_ROOT" "$TEST_REPO/scratch/lock-staged"
+printf 'content\n' > "$TEST_REPO/scratch/lock-staged/file.txt"
+STALE_LOCK_KEY="$(printf '%s' "database/mirror" | sha256sum | cut -c1-16)"
+printf 'version=1\nimpl=sh\npid=999999\nepoch=1\n' > "$LOCK_ROOT/$STALE_LOCK_KEY.lock"
+MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
+  "$TEST_REPO/scratch/lock-staged" "database/mirror" \
+  || fail "a stale mirror lock was not broken"
+test ! -e "$LOCK_ROOT/$STALE_LOCK_KEY.lock" || fail "the mirror lock was not released"
+
+# A live lock from the same implementation must still be honored.
+mkdir -p "$TEST_REPO/scratch/live-staged"
+printf 'content\n' > "$TEST_REPO/scratch/live-staged/file.txt"
+git -C "$TEST_REPO" add -A
+git -C "$TEST_REPO" -c user.name=TemplateTest -c user.email=test@example.invalid commit -qm "lock fixture"
+printf 'version=1\nimpl=sh\npid=%s\nepoch=%s\n' "$$" "$(date +%s)" \
+  > "$LOCK_ROOT/$STALE_LOCK_KEY.lock"
+if MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
+    "$TEST_REPO/scratch/live-staged" "database/mirror"; then
+  fail "a live mirror lock was ignored"
+fi
+rm -f "$LOCK_ROOT/$STALE_LOCK_KEY.lock"
+
 printf 'one\r\ntwo\r\n' > "$TEST_REPO/scratch/sample.apx"
 printf 'lone\rreturn' > "$TEST_REPO/scratch/lone-cr.apx"
 "$REPO_ROOT/scripts/normalize_apx.sh" "$TEST_REPO/scratch"
