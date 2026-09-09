@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
+import sys
 
 
 ARCHITECTURAL_TYPES = {
@@ -665,9 +666,19 @@ def parse_apexlang(text: str, path: Path) -> dict[str, object]:
 
 
 def extract_apexlang(path: Path) -> dict[str, object]:
-    """Graphify extractor entry point."""
+    """Graphify extractor entry point.
+
+    Never raises: one malformed file must not end a batch indexing run. The
+    warning matters as much as the catch -- returning an `error` nobody reads
+    is how a file silently vanishes from the graph.
+    """
     try:
         text = path.read_text(encoding="utf-8")
         return parse_apexlang(text, path)
-    except (OSError, UnicodeError, ApexlangParseError) as exc:
+    except Exception as exc:  # noqa: BLE001 - see the docstring
+        print(
+            f"Warning: APEXlang extraction failed for {path}: "
+            f"{type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
         return {"nodes": [], "edges": [], "error": str(exc)}

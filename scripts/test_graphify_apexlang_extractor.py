@@ -3,11 +3,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
 import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -59,6 +62,27 @@ class ApexlangExtractorTests(unittest.TestCase):
             hasattr(self.module, "extract_apexlang"),
             "extract_apexlang(path) is missing",
         )
+
+    def test_reports_an_unexpected_failure_without_raising(self) -> None:
+        broken = Path("apps/DEMO/101/pages/does-not-exist.apx")
+        with mock.patch.object(
+            self.module, "parse_apexlang", side_effect=RuntimeError("boom")
+        ), mock.patch.object(Path, "read_text", return_value="app 1 (\n)\n"):
+            with contextlib.redirect_stderr(io.StringIO()) as captured:
+                result = self.module.extract_apexlang(broken)
+        self.assertEqual(result["nodes"], [])
+        self.assertIn("boom", result["error"])
+        self.assertIn(str(broken), captured.getvalue())
+
+    def test_unqualified_calls_are_deliberately_not_detected(self) -> None:
+        # The dot requirement in PAREN_CALL_RE is load-bearing: without it every
+        # SQL built-in (NVL, TO_CHAR, SUBSTR) becomes a `calls` edge. Resolving
+        # unqualified names needs the database/ symbol table, which per-file
+        # extraction does not have. Do not "fix" this without that.
+        _reads, _writes, calls = self.module._sql_dependencies("begin log_event('m'); end;")
+        self.assertEqual(calls, set())
+        _reads, _writes, calls = self.module._sql_dependencies("begin pkg.proc(x); end;")
+        self.assertEqual(calls, {"PKG.PROC"})
 
     def test_reads_every_table_in_a_comma_separated_from_list(self) -> None:
         reads, _writes, _calls = self.module._sql_dependencies(
