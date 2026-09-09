@@ -421,6 +421,49 @@ list navigation-menu (
         }
         self.assertEqual(targets, {"apex_app_102_page_7"})
 
+    def test_pending_application_does_not_bleed_into_a_sibling_component(self) -> None:
+        source = (
+            "app 101 (\n"
+            "    page 5 (\n"
+            "        region first (\n"
+            "            application: 102\n"
+            "            page: 7\n"
+            "        )\n"
+            "        region second (\n"
+            "            page: 8\n"
+            "        )\n"
+            "    )\n"
+            ")\n"
+        )
+        result = self.module.parse_apexlang(source, Path("apps/DEMO/101/pages/p00005.apx"))
+        targets = {
+            edge["target"] for edge in result["edges"] if edge["relation"] == "navigates_to"
+        }
+        self.assertEqual(
+            targets,
+            {"apex_app_102_page_7", "apex_app_101_page_8"},
+        )
+
+    def test_pending_application_does_not_bleed_past_a_multiline_fence(self) -> None:
+        source = (
+            "app 101 (\n"
+            "    page 5 (\n"
+            "        region go (\n"
+            "            application: 102\n"
+            "            content: ```text\n"
+            "            page: 7\n"
+            "            ```\n"
+            "            page: 8\n"
+            "        )\n"
+            "    )\n"
+            ")\n"
+        )
+        result = self.module.parse_apexlang(source, Path("apps/DEMO/101/pages/p00005.apx"))
+        targets = {
+            edge["target"] for edge in result["edges"] if edge["relation"] == "navigates_to"
+        }
+        self.assertEqual(targets, {"apex_app_101_page_8"})
+
     def test_extracts_sql_reads_writes_and_plsql_calls(self) -> None:
         result = self.extract(
             """page 8 (
