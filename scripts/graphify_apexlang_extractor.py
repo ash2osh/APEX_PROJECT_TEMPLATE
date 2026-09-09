@@ -45,7 +45,11 @@ CLOSE_COMPONENT_RE = re.compile(r'^\s*\)\s*$')
 PROPERTY_RE = re.compile(r'^\s*([A-Za-z][A-Za-z0-9]*)\s*:\s*(.*?)\s*$')
 REFERENCE_RE = re.compile(r'^\s*([A-Za-z][A-Za-z0-9]*)\s*:\s*@([^\s\]}]+)')
 PAGE_TARGET_RE = re.compile(r'\bpage\s*:\s*(\d+)\b', re.IGNORECASE)
-APEX_URL_PAGE_RE = re.compile(r'f\?p=[^:\s]*:(\d+):', re.IGNORECASE)
+# The application segment is captured, not discarded: in a multi-application
+# workspace, attributing f?p=102:1: to the calling application silently routes
+# every cross-application link to the wrong page.
+APEX_URL_PAGE_RE = re.compile(r'f\?p=([^:\s]*):(\d+):', re.IGNORECASE)
+APPLICATION_PROPERTY_RE = re.compile(r'^\s*application\s*:\s*(\d+)\s*$', re.IGNORECASE)
 # A name part is a quoted identifier, an APEX substitution placeholder such as
 # #OWNER#, or a plain identifier. Placeholders appear as a schema qualifier in
 # exported queries and must not stop the match or leak into the node id.
@@ -199,6 +203,24 @@ def _nearest_owner(frames: list[Frame], fallback: str) -> str:
         if frame.architectural_owner:
             return frame.architectural_owner
     return fallback
+
+
+def _navigation_application(segment: str | None, current_app_id: str) -> str | None:
+    """Resolve the application an f?p target names.
+
+    A numeric segment is that application. An empty segment or an APEX
+    substitution such as &APP_ID. means this one. Anything else is an alias
+    this extractor cannot resolve without the workspace, and guessing would
+    reintroduce the misrouting this function exists to prevent.
+    """
+    if segment is None:
+        return current_app_id
+    segment = segment.strip()
+    if not segment or segment.startswith("&"):
+        return current_app_id
+    if segment.isdigit():
+        return segment
+    return None
 
 
 def _strip_sql_comments_and_literals(text: str) -> str:
@@ -395,6 +417,7 @@ def parse_apexlang(text: str, path: Path) -> dict[str, object]:
     in_fence = False
     in_block_comment = False
     pending_property: str | None = None
+    pending_application: str | None = None
     fence_owner: str | None = None
     fence_start = 0
     fence_lines: list[str] = []
@@ -460,6 +483,7 @@ def parse_apexlang(text: str, path: Path) -> dict[str, object]:
                 fence_lines = []
                 fence_is_database_code = False
                 pending_property = None
+                pending_application = None
             else:
                 fence_lines.append(raw_line)
             continue
@@ -525,6 +549,7 @@ def parse_apexlang(text: str, path: Path) -> dict[str, object]:
                 add_edge(parent_id, node_id, "contains", line_number)
                 owner = node_id
 
+            pending_application = None
             frames.append(
                 Frame(
                     kind=kind or token,
@@ -541,6 +566,7 @@ def parse_apexlang(text: str, path: Path) -> dict[str, object]:
                 raise ApexlangParseError(f"unexpected component close at {source_path}:L{line_number}")
             frames.pop()
             pending_property = None
+            pending_application = None
             continue
 
         name_match = NAME_RE.match(line)
@@ -563,12 +589,22 @@ def parse_apexlang(text: str, path: Path) -> dict[str, object]:
                 target = make_id(app_node_id, target_kind, reference)
                 add_edge(owner, target, "references_component", line_number)
 
+        application_match = APPLICATION_PROPERTY_RE.match(line)
+        if application_match:
+            pending_application = application_match.group(1)
+
         for page_match in PAGE_TARGET_RE.finditer(line):
-            target = make_id("apex", "app", app_id, "page", page_match.group(1))
+            target_app = _navigation_application(pending_application, app_id)
+            if target_app is None:
+                continue
+            target = make_id("apex", "app", target_app, "page", page_match.group(1))
             if target != owner:
                 add_edge(owner, target, "navigates_to", line_number)
         for page_match in APEX_URL_PAGE_RE.finditer(line):
-            target = make_id("apex", "app", app_id, "page", page_match.group(1))
+            target_app = _navigation_application(page_match.group(1), app_id)
+            if target_app is None:
+                continue
+            target = make_id("apex", "app", target_app, "page", page_match.group(2))
             if target != owner:
                 add_edge(owner, target, "navigates_to", line_number)
 

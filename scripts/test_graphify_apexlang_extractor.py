@@ -353,6 +353,74 @@ list navigation-menu (
             edges,
         )
 
+    def test_navigation_to_another_application_targets_that_application(self) -> None:
+        source = (
+            "app 101 (\n"
+            "    name: Caller\n"
+            "    page 5 (\n"
+            "        name: Launcher\n"
+            "        region go (\n"
+            "            url: f?p=102:1:&SESSION.\n"
+            "        )\n"
+            "    )\n"
+            ")\n"
+        )
+        result = self.module.parse_apexlang(source, Path("apps/DEMO/101/pages/p00005.apx"))
+        targets = {
+            edge["target"] for edge in result["edges"] if edge["relation"] == "navigates_to"
+        }
+        self.assertIn("apex_app_102_page_1", targets)
+        self.assertNotIn("apex_app_101_page_1", targets)
+
+    def test_navigation_with_a_substituted_application_stays_in_this_application(self) -> None:
+        source = (
+            "app 101 (\n"
+            "    page 5 (\n"
+            "        region go (\n"
+            "            url: f?p=&APP_ID.:9:&SESSION.\n"
+            "        )\n"
+            "    )\n"
+            ")\n"
+        )
+        result = self.module.parse_apexlang(source, Path("apps/DEMO/101/pages/p00005.apx"))
+        targets = {
+            edge["target"] for edge in result["edges"] if edge["relation"] == "navigates_to"
+        }
+        self.assertEqual(targets, {"apex_app_101_page_9"})
+
+    def test_navigation_to_an_unresolvable_alias_emits_no_edge(self) -> None:
+        source = (
+            "app 101 (\n"
+            "    page 5 (\n"
+            "        region go (\n"
+            "            url: f?p=my-alias:3:&SESSION.\n"
+            "        )\n"
+            "    )\n"
+            ")\n"
+        )
+        result = self.module.parse_apexlang(source, Path("apps/DEMO/101/pages/p00005.apx"))
+        targets = {
+            edge["target"] for edge in result["edges"] if edge["relation"] == "navigates_to"
+        }
+        self.assertEqual(targets, set())
+
+    def test_page_target_uses_a_sibling_application_property(self) -> None:
+        source = (
+            "app 101 (\n"
+            "    page 5 (\n"
+            "        region go (\n"
+            "            application: 102\n"
+            "            page: 7\n"
+            "        )\n"
+            "    )\n"
+            ")\n"
+        )
+        result = self.module.parse_apexlang(source, Path("apps/DEMO/101/pages/p00005.apx"))
+        targets = {
+            edge["target"] for edge in result["edges"] if edge["relation"] == "navigates_to"
+        }
+        self.assertEqual(targets, {"apex_app_102_page_7"})
+
     def test_extracts_sql_reads_writes_and_plsql_calls(self) -> None:
         result = self.extract(
             """page 8 (
