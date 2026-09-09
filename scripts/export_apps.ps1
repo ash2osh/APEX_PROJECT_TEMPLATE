@@ -18,7 +18,9 @@ foreach ($appId in $appIds) {
 }
 
 $scratchPath = Join-Path $repoRoot "scratch"
-New-Item -ItemType Directory -Force -Path $scratchPath | Out-Null
+# New-Item has no -LiteralPath parameter on either Windows PowerShell 5.1 or
+# PowerShell 7. The .NET API is literal and has the same create-if-missing behavior.
+[System.IO.Directory]::CreateDirectory($scratchPath) | Out-Null
 $stagingPath = Join-Path $scratchPath ("apex-export-" + [Guid]::NewGuid().ToString("N"))
 $stageParent = Join-Path $stagingPath "staged/apps/$($env:APEX_PARSING_SCHEMA)"
 New-Item -ItemType Directory -Force -Path $stageParent | Out-Null

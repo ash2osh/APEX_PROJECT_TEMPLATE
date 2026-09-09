@@ -191,3 +191,6 @@ unset project_env_line project_env_key project_env_value project_env_required
 unset project_env_seen_keys project_env_seen_key project_env_seen_present
 unset project_env_prefix_items project_env_prefix_item project_env_quoted
 unset project_env_repo_root
+# load_env.ps1 removes its helper and says it is mirroring this file. It was
+# not: only variables were unset, leaving two functions in the caller's shell.
+unset -f project_env_fail project_env_validate_unique_csv

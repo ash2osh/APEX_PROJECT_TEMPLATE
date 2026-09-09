@@ -88,13 +88,15 @@ foreach ($schema in $backupSchemas) {
 }
 
 $scratchPath = Join-Path $repoRoot "scratch"
-New-Item -ItemType Directory -Force -Path $scratchPath | Out-Null
+# New-Item has no -LiteralPath parameter on either Windows PowerShell 5.1 or
+# PowerShell 7. The .NET API is literal and has the same create-if-missing behavior.
+[System.IO.Directory]::CreateDirectory($scratchPath) | Out-Null
 $stagingPath = Join-Path $scratchPath ("db-backup-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path (Join-Path $stagingPath "scripts") | Out-Null
 
 try {
   $locationPushed = $false
-  Push-Location $stagingPath
+  Push-Location -LiteralPath $stagingPath
   $locationPushed = $true
 
   # Both exports and manifests must complete before any generated mirror changes.

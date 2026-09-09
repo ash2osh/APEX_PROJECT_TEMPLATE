@@ -296,6 +296,18 @@ printf 'lone\rreturn' > "$TEST_REPO/scratch/lone-cr.apx"
 test "$(tail -c 1 "$TEST_REPO/scratch/sample.apx" | od -An -t x1 | tr -d ' \n')" = "0a" || fail "normalizer did not add a trailing LF"
 ! grep -Eq 'git[[:space:]]+checkout' "$REPO_ROOT/scripts/normalize_apx.sh" "$REPO_ROOT/scripts/normalize_apx.ps1" || fail "normalizer still invokes Git checkout"
 
+# perl -pi is byte-oriented and preserves a BOM; the PowerShell normalizer must
+# not silently rewrite the bytes of the one file type .gitattributes exists to
+# keep stable.
+BOM_DIR="$TEST_ROOT/bom"
+mkdir -p "$BOM_DIR"
+printf '\xEF\xBB\xBFapp 1 (\r\n)\r\n' > "$BOM_DIR/application.apx"
+"$REPO_ROOT/scripts/normalize_apx.sh" "$BOM_DIR"
+test "$(head -c 3 "$BOM_DIR/application.apx" | od -An -tx1 | tr -d ' ')" = "efbbbf" \
+  || fail "the Bash normalizer stripped a UTF-8 BOM"
+! LC_ALL=C grep -q $'\r' "$BOM_DIR/application.apx" \
+  || fail "the Bash normalizer left a CR"
+
 # The .ps1 half of every script pair only gets exercised if a PowerShell is
 # found. Windows ships Windows PowerShell 5.1 as "powershell" and often has
 # no "pwsh" at all, and the .ps1 scripts declare #Requires -Version 5.1, so
@@ -418,6 +430,13 @@ EOF
 ENV_OUTPUT="$(bash -c 'source "$1" "$2"; printf "%s|%s|%s|%s|%s|%s" "$PROJECT_NAME" "$APEX_APP_ID" "$TABLES_PREFIXES" "$CODE_PREFIXES" "$TABLES_SCHEMA" "$APEX_PARSING_SCHEMA"' \
   _ "$REPO_ROOT/scripts/load_env.sh" "$ENV_FILE")"
 test "$ENV_OUTPUT" = "\$(touch $INJECTION_MARKER)|100,200|SAMPLE_,COMMON_|SAMPLE_,COMMON_|SAMPLE_DATA|SAMPLE_APEX" || fail "environment loader changed literal or CSV values"
+
+# load_env.sh must not leave its helpers defined in the caller's shell, which is
+# what load_env.ps1's cleanup comment claims it mirrors.
+LEAKED_FUNCTIONS="$(bash -c 'source "$1" "$2" >/dev/null 2>&1; declare -F | grep -c project_env || true' \
+  _ "$REPO_ROOT/scripts/load_env.sh" "$ENV_FILE")"
+test "$LEAKED_FUNCTIONS" = "0" \
+  || fail "load_env.sh left $LEAKED_FUNCTIONS helper function(s) defined in the caller"
 test ! -e "$INJECTION_MARKER" || fail "environment loader executed .env content"
 
 # README.md documents `PROJECT_ENV_FILE=.env.other scripts/export_apps.sh`.

@@ -26,6 +26,24 @@ try {
   Assert-True (Test-Path -LiteralPath (Join-Path $testRepo "database/mirror/new.txt")) "new mirror content was not installed"
   Assert-True (-not (Test-Path -LiteralPath (Join-Path $testRepo "database/mirror/stale.txt"))) "stale mirror content was retained"
 
+  $bomDir = Join-Path $testRoot "bom"
+  New-Item -ItemType Directory -Force -Path $bomDir | Out-Null
+  $bomBytes = [byte[]]@(0xEF, 0xBB, 0xBF) + [System.Text.Encoding]::UTF8.GetBytes("app 1 (`r`n)`r`n")
+  [System.IO.File]::WriteAllBytes((Join-Path $bomDir "application.apx"), $bomBytes)
+  & (Join-Path $PSScriptRoot "normalize_apx.ps1") $bomDir
+  $normalized = [System.IO.File]::ReadAllBytes((Join-Path $bomDir "application.apx"))
+  Assert-True ($normalized[0] -eq 0xEF -and $normalized[1] -eq 0xBB -and $normalized[2] -eq 0xBF) `
+    "the PowerShell normalizer stripped a UTF-8 BOM"
+  Assert-True (-not ($normalized -contains 0x0D)) "the PowerShell normalizer left a CR"
+
+  # A repository cloned under a directory containing [ or ] must still work.
+  $globDir = Join-Path $testRoot "glob[1]"
+  New-Item -ItemType Directory -Force -Path $globDir | Out-Null
+  [System.IO.File]::WriteAllText((Join-Path $globDir "application.apx"), "app 1 (`r`n)`r`n")
+  & (Join-Path $PSScriptRoot "normalize_apx.ps1") $globDir
+  Assert-True (-not ([System.IO.File]::ReadAllText((Join-Path $globDir "application.apx")).Contains("`r"))) `
+    "normalize_apx.ps1 did not normalize a path containing glob characters"
+
   # A real failure after the first staged replacement must unwind both mirrors.
   New-Item -ItemType Directory -Force -Path @(
     (Join-Path $testRepo "database/atomic-one"),
