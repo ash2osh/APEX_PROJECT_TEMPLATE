@@ -307,23 +307,50 @@ rm -f "$LOCK_ROOT/$STALE_LOCK_KEY.lock"
 # A non-SHA fallback would make Bash target a different path from PowerShell.
 # Run a real replacement with only the commands it needs, deliberately omitting
 # sha256sum and shasum while retaining cksum to expose the former bad fallback.
+#
+# The fixture uses exec wrappers rather than `ln -s`. Git Bash silently turns a
+# symlink into a copy (see make_symlink above), and a copied MSYS binary cannot
+# resolve its DLLs, so the replacement died long before it reached the digest
+# and the assertion below never saw the message it was looking for.
+#
+# `type -P`, never `command -v`: the latter reports a shell function or alias by
+# name rather than by path, and a wrapper built from a bare name re-enters
+# itself under the restricted PATH instead of reaching the real tool.
 NO_SHA_BIN="$TEST_REPO/scratch/no-sha-bin"
 mkdir -p "$NO_SHA_BIN" "$TEST_REPO/scratch/no-sha-staged"
+no_sha_fixture_usable=true
 for TOOL in dirname mkdir find git stat basename sed head tr date rm mv cksum awk; do
-  TOOL_PATH="$(command -v "$TOOL")"
-  if [ -z "$TOOL_PATH" ] || ! ln -s "$TOOL_PATH" "$NO_SHA_BIN/$TOOL" 2>/dev/null; then
-    fail "could not build the no-SHA-256 PATH fixture for $TOOL"
+  TOOL_PATH="$(type -P "$TOOL" 2>/dev/null)" || TOOL_PATH=""
+  if [ -z "$TOOL_PATH" ]; then
+    no_sha_fixture_usable=false
+    break
   fi
+  printf '#!%s\nexec "%s" "$@"\n' "$BASH" "$TOOL_PATH" > "$NO_SHA_BIN/$TOOL"
+  chmod +x "$NO_SHA_BIN/$TOOL"
 done
-printf 'content\n' > "$TEST_REPO/scratch/no-sha-staged/file.txt"
-if NO_SHA_OUTPUT="$(PATH="$NO_SHA_BIN" MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$BASH" \
-    "$REPO_ROOT/scripts/replace_mirror.sh" "$TEST_REPO/scratch/no-sha-staged" "database/mirror" 2>&1)"; then
-  fail "mirror replacement accepted a non-SHA-256 lock path"
+# Confirm the fixture really works here before asserting against it. A platform
+# that cannot produce a SHA-256-free PATH must report that plainly, rather than
+# surfacing a broken fixture as a product failure.
+if [ "$no_sha_fixture_usable" = true ]; then
+  PATH="$NO_SHA_BIN" "$BASH" -c '
+    git --version >/dev/null 2>&1 &&
+    find . -maxdepth 0 >/dev/null 2>&1 &&
+    ! command -v sha256sum >/dev/null 2>&1 &&
+    ! command -v shasum >/dev/null 2>&1' || no_sha_fixture_usable=false
 fi
-case "$NO_SHA_OUTPUT" in
-  *"SHA-256 is required to acquire a mirror lock"*) ;;
-  *) fail "mirror replacement did not explain the missing SHA-256 tool" ;;
-esac
+if [ "$no_sha_fixture_usable" != true ]; then
+  echo "SKIP: cannot build a SHA-256-free PATH fixture on this platform" >&2
+else
+  printf 'content\n' > "$TEST_REPO/scratch/no-sha-staged/file.txt"
+  if NO_SHA_OUTPUT="$(PATH="$NO_SHA_BIN" MIRROR_SYNC_REPO_ROOT="$TEST_REPO" "$BASH" \
+      "$REPO_ROOT/scripts/replace_mirror.sh" "$TEST_REPO/scratch/no-sha-staged" "database/mirror" 2>&1)"; then
+    fail "mirror replacement accepted a non-SHA-256 lock path"
+  fi
+  case "$NO_SHA_OUTPUT" in
+    *"SHA-256 is required to acquire a mirror lock"*) ;;
+    *) fail "mirror replacement did not explain the missing SHA-256 tool" ;;
+  esac
+fi
 
 printf 'one\r\ntwo\r\n' > "$TEST_REPO/scratch/sample.apx"
 printf 'lone\rreturn' > "$TEST_REPO/scratch/lone-cr.apx"
