@@ -68,6 +68,43 @@ test "$(cat "$TEST_REPO/database/atomic-two/value.txt")" = "old two" \
 test -z "$(git -C "$TEST_REPO" status --porcelain -- database/atomic-one database/atomic-two)" \
   || fail "Bash rollback left an atomic mirror dirty"
 
+# Once every mirror is installed the replacement has succeeded, and discarding
+# the scratch backup copies is best-effort cleanup. A failure there must never
+# reach the unwind: `rm -rf` deletes what it can before failing, so unwinding
+# would restore a partially destroyed backup over the new mirror -- losing
+# committed files while reporting "mirrors installed". PowerShell keeps its
+# cleanup outside the rollback for the same reason.
+CLEANUP_REPO="$TEST_ROOT/cleanup-repo"
+mkdir -p "$CLEANUP_REPO/database/mirror/locked" "$CLEANUP_REPO/scratch/staged"
+git init -q "$CLEANUP_REPO"
+printf 'previous\n' > "$CLEANUP_REPO/database/mirror/previous.txt"
+printf 'kept\n' > "$CLEANUP_REPO/database/mirror/locked/keep.txt"
+git -C "$CLEANUP_REPO" add -A
+git -C "$CLEANUP_REPO" -c user.name=TemplateTest -c user.email=test@example.invalid \
+  commit -qm "seed cleanup-failure mirror"
+printf 'installed\n' > "$CLEANUP_REPO/scratch/staged/installed.txt"
+# A directory without write permission cannot have its children unlinked, which
+# is the portable stand-in for the Windows "handle still open" case. Windows
+# filesystems ignore directory permissions, so confirm the trick actually took
+# effect rather than asserting against a case this platform cannot produce.
+chmod 555 "$CLEANUP_REPO/database/mirror/locked"
+if rm -rf "$CLEANUP_REPO/database/mirror/locked" 2>/dev/null; then
+  echo "SKIP: this filesystem ignores directory permissions; backup cleanup failure not exercised" >&2
+else
+  set +e
+  MIRROR_SYNC_REPO_ROOT="$CLEANUP_REPO" "$REPO_ROOT/scripts/replace_mirror.sh" \
+    "$CLEANUP_REPO/scratch/staged" "database/mirror" 2>/dev/null
+  cleanup_failure_status=$?
+  set -e
+  test "$cleanup_failure_status" -ne 0 \
+    || fail "a backup cleanup failure was not reported"
+  test -f "$CLEANUP_REPO/database/mirror/installed.txt" \
+    || fail "a backup cleanup failure unwound a completed mirror replacement"
+  test ! -e "$CLEANUP_REPO/database/mirror/previous.txt" \
+    || fail "a backup cleanup failure restored the previous mirror over the installed one"
+fi
+chmod -R u+rwX "$CLEANUP_REPO" 2>/dev/null || true
+
 # The indexed backup path is the one the move uses, so it must be rejected
 # during validation before any lock or move. Pause the first Git query until
 # the background replacement PID is known, then create that exact path.

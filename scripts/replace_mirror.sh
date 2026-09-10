@@ -295,7 +295,15 @@ for (( PAIR_INDEX=0; PAIR_INDEX < ${#STAGED_DIRS[@]}; PAIR_INDEX++ )); do
   INSTALLED_INDEXES+=("$PAIR_INDEX")
 done
 
-# Every mirror is installed. Discard the saved copies.
+# Every mirror is installed: this is the point of no return. Disarm the unwind
+# before touching the saved copies, because discarding them is best-effort
+# cleanup. `rm -rf` deletes what it can before failing, so unwinding from here
+# would restore a partially destroyed backup over a good mirror -- losing
+# committed files while reporting "mirrors installed". PowerShell keeps its
+# cleanup outside the rollback for the same reason.
+INSTALLED_INDEXES=()
+MOVED_DEST_INDEXES=()
+
 for (( PAIR_INDEX=0; PAIR_INDEX < ${#BACKUP_DIRS[@]}; PAIR_INDEX++ )); do
   if [ -e "${BACKUP_DIRS[$PAIR_INDEX]}" ] || [ -L "${BACKUP_DIRS[$PAIR_INDEX]}" ]; then
     rm -rf -- "${BACKUP_DIRS[$PAIR_INDEX]}" || {
@@ -304,5 +312,3 @@ for (( PAIR_INDEX=0; PAIR_INDEX < ${#BACKUP_DIRS[@]}; PAIR_INDEX++ )); do
     }
   fi
 done
-INSTALLED_INDEXES=()
-MOVED_DEST_INDEXES=()
