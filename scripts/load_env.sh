@@ -80,8 +80,7 @@ while IFS= read -r project_env_line || [ -n "$project_env_line" ]; do
     project_env_fail "$project_env_key has an inline comment; .env values are parsed literally, so put the comment on its own line, or quote the value to keep a literal '#'"
     return 1 2>/dev/null || exit 1
   fi
-  printf -v "$project_env_key" '%s' "$project_env_value"
-  export "$project_env_key"
+  export "$project_env_key=$project_env_value"
   project_env_seen_keys+=("$project_env_key")
 done < "$PROJECT_ENV_FILE"
 
