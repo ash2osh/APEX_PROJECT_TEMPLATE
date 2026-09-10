@@ -136,7 +136,7 @@ tracked, tested source.
   tests the result, rolls back on any failure, and invalidates only stale
   `.apx` cache entries — so the integration survives Graphify upgrades instead
   of silently regressing.
-- **36 regression tests** covering the extractor, the installer, and the
+- **66 regression tests** covering the extractor, the installer, and the
   corpus boundaries, wired into `scripts/test_template.sh`.
 
 See the [Graphify workflow](.agents/workflows/graphify.md) for exclusions and
