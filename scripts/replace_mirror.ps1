@@ -79,7 +79,13 @@ if (-not $destinationPath.StartsWith($repoRoot + [System.IO.Path]::DirectorySepa
 # Single-quoted PowerShell strings do not process escapes, so the separators
 # are written as one character each: '\\' would be a two-character string and
 # fail to cast to [char].
-$canonicalRelativeDestination = $destinationPath.Substring($repoRoot.Length).TrimStart([char[]]@('/', '\'))
+# Normalise to '/' the way Bash builds this path on every platform. The lock
+# digest is taken over this exact string, so a Windows '\' here would key the
+# PowerShell lock differently from the Bash one and the two implementations
+# would stop excluding each other -- on Windows, the one platform where both
+# shells are routinely present, which is the case the shared protocol exists
+# for. The messages below read the same on both platforms as a side effect.
+$canonicalRelativeDestination = $destinationPath.Substring($repoRoot.Length).TrimStart([char[]]@('/', '\')) -replace '\\', '/'
 $canonicalDestinationParts = $canonicalRelativeDestination -split '[\\/]'
 $canonicalApproved = ($canonicalDestinationParts[0] -eq "database" -and $canonicalDestinationParts.Count -eq 2) -or
   ($canonicalDestinationParts[0] -eq "apps" -and $canonicalDestinationParts.Count -eq 3)

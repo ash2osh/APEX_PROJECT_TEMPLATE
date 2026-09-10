@@ -788,6 +788,14 @@ grep -q 'verify_scope_complete' "$REPO_ROOT/scripts/backup_db.sh" \
   || fail "backup_db.sh no longer verifies scope completeness against the manifest"
 grep -q 'Test-ScopeComplete' "$REPO_ROOT/scripts/backup_db.ps1" \
   || fail "backup_db.ps1 no longer verifies scope completeness against the manifest"
+# The mirror lock digest is taken over the canonical relative path. PowerShell
+# derives that path from a Windows destination, so it must normalise '\' to '/'
+# or it keys its lock differently from Bash and the two implementations stop
+# excluding each other -- on Windows, the one platform where both shells are
+# routinely present. The cross-implementation test above is the functional
+# guard, but it can only run where both shells exist; this one fails anywhere.
+grep -q 'canonicalRelativeDestination.*-replace' "$REPO_ROOT/scripts/replace_mirror.ps1" \
+  || fail "replace_mirror.ps1 no longer normalises the canonical mirror path to forward slashes"
 # SQLcl builds a JLine console over stdin and aborts -- then exits 0 -- when
 # stdin is a descriptor it cannot probe, which is what every non-interactive
 # caller hands it on Windows. Both wrappers must feed it an empty file.
