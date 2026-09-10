@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -99,9 +100,27 @@ paths = json.loads(sys.argv[2])
 patterns = _load_graphifyignore(root)
 print(json.dumps({path: _is_ignored(root / path, root, patterns) for path in paths}))
 '''
+        # Materialise every fixture path in a throwaway root rather than asking
+        # the matcher about the working copy. Gitignore directory-only patterns
+        # such as `/apps/**/.apex/` match only when the directory exists, so
+        # querying the real tree made the answer depend on whichever demo
+        # leftovers a given clone happened to have -- the assertion silently
+        # became about local state instead of about .graphifyignore.
+        #
+        # The root has to sit outside the repository: `scratch/` is gitignored,
+        # so a matcher that honours ignore rules reports every path under it as
+        # ignored and the test passes for entirely the wrong reason. See the
+        # filesystem section of .agents/rules/agent-safety.md.
+        fixture_root = Path(tempfile.mkdtemp(prefix="graphify-corpus."))
+        self.addCleanup(shutil.rmtree, fixture_root, ignore_errors=True)
+        shutil.copyfile(IGNORE_PATH, fixture_root / ".graphifyignore")
         paths = list(INCLUDED_PATHS + EXCLUDED_PATHS)
+        for path in paths:
+            target = fixture_root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("", encoding="utf-8")
         completed = subprocess.run(
-            [str(interpreter), "-c", script, str(REPO_ROOT), json.dumps(paths)],
+            [str(interpreter), "-c", script, str(fixture_root), json.dumps(paths)],
             check=True,
             text=True,
             capture_output=True,

@@ -103,7 +103,10 @@ per-clone local state for the same reason `.env` is.
   directly under `apps/`, not here.
 - `scratch/` — local, gitignored throwaway space. All temporary files,
   generated helper scripts, staging exports, and rollback copies go here;
-  never put anything here that needs to survive the session.
+  never put anything here that needs to survive the session. The single
+  exception is a read-only verification path that must not modify the
+  repository at all — see the filesystem section of
+  [`.agents/rules/agent-safety.md`](.agents/rules/agent-safety.md).
 - `scripts/` — export/backup automation (`.sh` and `.ps1` pairs for
   cross-platform use).
 

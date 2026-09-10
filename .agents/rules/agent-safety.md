@@ -56,7 +56,16 @@ Apply these gates in every repository workflow, regardless of client or model.
   overwrites.
 - Put temporary files, generated helper scripts, staging exports, and rollback
   copies only under the repository's `scratch/` directory, and clean them up
-  when the operation finishes.
+  when the operation finishes. Two narrow cases may use the system temporary
+  directory instead, and must still delete what they create:
+  - a read-only verification path that has to leave the repository
+    byte-for-byte unchanged — a check run to find out whether something is
+    installed must not itself write into the tree
+    (`setup_graphify_apx.py --verify`);
+  - a fixture that must not inherit the repository's own state. `scratch/` is
+    gitignored, so anything placed there is invisible to a tool that honours
+    ignore rules, and a test of such a tool would be asserting against the
+    wrong thing (`scripts/test_graphify_corpus.py`).
 - Review generated files and focused diffs before staging them.
 - Do not print credentials, wallets, private keys, passwords, tokens, or full
   credential-bearing URLs; do not dump unrestricted environment variables.
