@@ -55,12 +55,30 @@ git -C "$TEST_REPO" add database/atomic-one database/atomic-two database/mirror
 git -C "$TEST_REPO" -c user.name=TemplateTest -c user.email=test@example.invalid commit -qm "seed atomic replacement mirrors"
 printf 'new one\n' > "$TEST_REPO/scratch/atomic-one/value.txt"
 printf 'new two\n' > "$TEST_REPO/scratch/atomic-two/value.txt"
-if MIRROR_SYNC_TEST_FAIL_STAGED_MOVE_INDEX=1 MIRROR_SYNC_REPO_ROOT="$TEST_REPO" \
+# Inject the failure by shimming `mv` on PATH rather than through a hook inside
+# the script. A production abort path that exists only for tests is one more way
+# for a real run to stop part-way through moving real directories.
+#
+# Fail only the *first* move into the second mirror -- that is the staged
+# install, which leaves pair one installed and pair two not, exactly the state
+# the unwind has to reverse. The rollback moves the saved copy back into the
+# same destination, so it must be allowed through.
+FAIL_MV_BIN="$TEST_REPO/scratch/fail-mv-bin"
+mkdir -p "$FAIL_MV_BIN"
+printf '#!%s\nset -euo pipefail\nif [ "${3:-}" = "$MIRROR_TEST_MV_FAIL_DEST" ] && [ ! -e "$MIRROR_TEST_MV_FIRED" ]; then\n  : > "$MIRROR_TEST_MV_FIRED"\n  echo "simulated mv failure for $3" >&2\n  exit 1\nfi\nexec "$MIRROR_TEST_REAL_MV" "$@"\n' \
+  "$BASH" > "$FAIL_MV_BIN/mv"
+chmod +x "$FAIL_MV_BIN/mv"
+if MIRROR_TEST_MV_FAIL_DEST="$TEST_REPO/database/atomic-two" \
+    MIRROR_TEST_MV_FIRED="$TEST_REPO/scratch/mv-fired" \
+    MIRROR_TEST_REAL_MV="$(type -P mv)" \
+    PATH="$FAIL_MV_BIN:$PATH" MIRROR_SYNC_REPO_ROOT="$TEST_REPO" \
     "$REPO_ROOT/scripts/replace_mirror.sh" \
     "$TEST_REPO/scratch/atomic-one" "database/atomic-one" \
     "$TEST_REPO/scratch/atomic-two" "database/atomic-two"; then
-  fail "test-only second staged move failure was accepted"
+  fail "a failing staged mirror move was accepted"
 fi
+test -e "$TEST_REPO/scratch/mv-fired" \
+  || fail "the mv failure fixture never fired, so the rollback was not exercised"
 test "$(cat "$TEST_REPO/database/atomic-one/value.txt")" = "old one" \
   || fail "Bash rollback did not restore the first mirror"
 test "$(cat "$TEST_REPO/database/atomic-two/value.txt")" = "old two" \

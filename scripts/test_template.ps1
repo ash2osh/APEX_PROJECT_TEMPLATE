@@ -57,8 +57,31 @@ try {
   & git -C $testRepo -c user.name=TemplateTest -c user.email=test@example.invalid commit -qm "seed atomic replacement mirrors"
   [System.IO.File]::WriteAllText((Join-Path $testRepo "scratch/atomic-one/value.txt"), "new one`n")
   [System.IO.File]::WriteAllText((Join-Path $testRepo "scratch/atomic-two/value.txt"), "new two`n")
-  $previousFailIndex = $env:MIRROR_SYNC_TEST_FAIL_STAGED_MOVE_INDEX
-  $env:MIRROR_SYNC_TEST_FAIL_STAGED_MOVE_INDEX = "1"
+  # Inject the failure by shadowing Move-Item from this scope rather than
+  # through a hook inside the script. PowerShell resolves functions before
+  # cmdlets and scopes them dynamically, so the called script picks this up
+  # without any production abort path existing for tests to trigger.
+  #
+  # Fail only the *first* move into the second mirror -- that is the staged
+  # install, which leaves pair one installed and pair two not, exactly the
+  # state the unwind has to reverse. The rollback moves the saved copy back
+  # into the same destination, so it must be allowed through.
+  # $global:, not $script:: the override runs while the *called* script is on
+  # the stack, and $script: there resolves to that script's scope, not this one.
+  $global:atomicMoveFired = $false
+  function Move-Item {
+    [CmdletBinding()]
+    param(
+      [Parameter(Mandatory = $true)][string]$LiteralPath,
+      [Parameter(Mandatory = $true)][string]$Destination
+    )
+    if (-not $global:atomicMoveFired -and
+        ($Destination -replace '\\', '/') -like '*/database/atomic-two') {
+      $global:atomicMoveFired = $true
+      throw "simulated move failure for $Destination"
+    }
+    Microsoft.PowerShell.Management\Move-Item -LiteralPath $LiteralPath -Destination $Destination
+  }
   $rejected = $false
   try {
     & (Join-Path $testRepo "scripts/replace_mirror.ps1") `
@@ -67,9 +90,13 @@ try {
   } catch {
     $rejected = $true
   } finally {
-    $env:MIRROR_SYNC_TEST_FAIL_STAGED_MOVE_INDEX = $previousFailIndex
+    Remove-Item -LiteralPath Function:Move-Item -ErrorAction SilentlyContinue
   }
-  Assert-True $rejected "test-only second staged move failure was accepted"
+  # Read the flag before discarding it; asserting on a removed global reads $null.
+  $atomicMoveDidFire = $global:atomicMoveFired
+  Remove-Variable -Name atomicMoveFired -Scope Global -ErrorAction SilentlyContinue
+  Assert-True $rejected "a failing staged mirror move was accepted"
+  Assert-True $atomicMoveDidFire "the move failure fixture never fired, so the rollback was not exercised"
   Assert-True (([System.IO.File]::ReadAllText((Join-Path $testRepo "database/atomic-one/value.txt"))).Trim() -eq "old one") "PowerShell rollback did not restore the first mirror"
   Assert-True (([System.IO.File]::ReadAllText((Join-Path $testRepo "database/atomic-two/value.txt"))).Trim() -eq "old two") "PowerShell rollback did not restore the second mirror"
   $dirtyAtomic = @(git -C $testRepo status --porcelain -- database/atomic-one database/atomic-two)

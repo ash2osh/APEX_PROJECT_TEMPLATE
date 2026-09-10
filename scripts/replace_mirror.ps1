@@ -225,18 +225,13 @@ try {
     }
   }
 
-  $pairIndex = 0
   foreach ($pair in $validated) {
     if (Test-Path -LiteralPath $pair.DestinationPath) {
       Move-Item -LiteralPath $pair.DestinationPath -Destination $pair.BackupPath
       $movedDestination += $pair
     }
-    if ($env:MIRROR_SYNC_TEST_FAIL_STAGED_MOVE_INDEX -eq "$pairIndex") {
-      throw "test-only staged mirror move failure at index $pairIndex"
-    }
     Move-Item -LiteralPath $pair.StagedPath -Destination $pair.DestinationPath
     $installed += $pair
-    $pairIndex += 1
   }
 } catch {
   $originalErrorMessage = $_.Exception.Message

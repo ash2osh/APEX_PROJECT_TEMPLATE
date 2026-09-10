@@ -287,10 +287,6 @@ for (( PAIR_INDEX=0; PAIR_INDEX < ${#STAGED_DIRS[@]}; PAIR_INDEX++ )); do
     mv -- "${DEST_DIRS[$PAIR_INDEX]}" "${BACKUP_DIRS[$PAIR_INDEX]}"
     MOVED_DEST_INDEXES+=("$PAIR_INDEX")
   fi
-  if [ "${MIRROR_SYNC_TEST_FAIL_STAGED_MOVE_INDEX:-}" = "$PAIR_INDEX" ]; then
-    echo "test-only staged mirror move failure at index $PAIR_INDEX" >&2
-    exit 1
-  fi
   mv -- "${STAGED_DIRS[$PAIR_INDEX]}" "${DEST_DIRS[$PAIR_INDEX]}"
   INSTALLED_INDEXES+=("$PAIR_INDEX")
 done
