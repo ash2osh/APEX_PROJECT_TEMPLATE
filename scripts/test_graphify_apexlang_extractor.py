@@ -103,11 +103,18 @@ class ApexlangExtractorTests(unittest.TestCase):
         self.assertEqual(result["nodes"], [])
         self.assertEqual(result["edges"], [])
         self.assertEqual(result["error"], "boom")
+        # str(Path) renders with the platform separator, so a hardcoded
+        # forward-slash expectation passes on POSIX and fails on Windows for a
+        # reason the assertion is not about. Derive the path the same way the
+        # extractor does; what is under test is that the embedded newline
+        # collapses so the warning stays on exactly one line.
+        expected_path = " ".join(str(broken).splitlines())
+        self.assertNotIn("\n", expected_path)
         self.assertEqual(
             captured.getvalue().splitlines(),
             [
-                "Warning: APEXlang extraction failed for "
-                "apps/DEMO/101/pages/first second.apx: RuntimeError: boom"
+                f"Warning: APEXlang extraction failed for "
+                f"{expected_path}: RuntimeError: boom"
             ],
         )
 
