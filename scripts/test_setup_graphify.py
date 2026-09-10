@@ -312,15 +312,19 @@ class GraphifyPatchTests(unittest.TestCase):
         self.write_package_at(good)
         self.write_package_at(broken)
         (broken / "extract.py").write_text("nothing to anchor on\n", encoding="utf-8")
-        cache = MODULE.REPO_ROOT / "graphify-out" / "cache" / "ast"
-        cache.mkdir(parents=True, exist_ok=True)
+        # setup_graphify_apx() derives the cache path from REPO_ROOT. Point that
+        # at the throwaway fixture root: creating graphify-out/cache/ast/ in the
+        # real tree leaves an empty directory behind after the run, and a test
+        # must not deposit anything in the repository it is testing.
+        fake_repo_root = self.root / "repo"
+        cache = fake_repo_root / "graphify-out" / "cache" / "ast"
+        cache.mkdir(parents=True)
         stale = cache / "partial-setup-fixture.json"
         stale.write_text(
             json.dumps({"nodes": [{"source_file": "apps/DEMO/101/pages/p1.apx"}]}),
             encoding="utf-8",
         )
-        self.addCleanup(lambda: stale.unlink(missing_ok=True))
-        with mock.patch.object(
+        with mock.patch.object(MODULE, "REPO_ROOT", fake_repo_root), mock.patch.object(
             MODULE, "find_graphify_dirs", return_value=[str(good), str(broken)]
         ):
             self.assertFalse(MODULE.setup_graphify_apx())
